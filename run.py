@@ -8,8 +8,7 @@ import networkx as nx
 import sys, ogr
 sys.path.append('C:/a8243587_DATA/GitRepo/nx_pgnet')
 import nx_pg
-sys.path.append('C:/a8243587_DATA/work_package_two')
-import nx_pgnet_attribute_addon as nx_pgnet_av #read and write methods to db
+import nx_pgnet_atts as nx_pgnet_av #read and write methods to db
 
 '''-------------pull network from database and create networkx instance-----'''
 #name = "sample"
@@ -25,7 +24,7 @@ G = nx_pg.read_pg(conn, 'tyne_wear_m_a_b') #no attributes added at this time
 
 '''-------------add network to db with specified attributes-----------------'''
 #attributes = None
-attributes = [{'flow':True, 'capacity':True, 'storage':False, 'resistance':False, 'latency':False},{'flow':True, 'capacity':True, 'length':False, 'resistance':False, 'stacking':False}]
+attributes = [{'flow':False, 'capacity':True, 'storage':False, 'resistance':False, 'latency':False},{'flow':False, 'capacity':True, 'length':False, 'resistance':False, 'stacking':False}]
 result = nx_pgnet_av.write(conn,name).write_to_db(G,attributes, contains_atts = False)
 if result == False: exit()
 else: print "Network added."
@@ -40,16 +39,10 @@ else: print "All functions added successfully."
 
 '''-------------add attribute values and function ids to nodes and edges----'''
 
-attribute = 'flow'
-att_value_range = [5,25]
-functionid_range = [0,2]
+attribute = 'flow' ; att_value_range = [5,25] ; functionid_range = [0,2]
 nx_pgnet_av.write(conn,name).add_atts_randomly(G,attribute,att_value_range,functionid_range,overwrite=False)
-attribute = 'capacity'
-att_value_range = [2,56]
-functionid_range = [0,2]
+attribute = 'capacity' ; att_value_range = [2,56] ; functionid_range = [0,2]
 nx_pgnet_av.write(conn,name).add_atts_randomly(G,attribute,att_value_range,functionid_range,overwrite=False)
-
-exit()
 
 '''-------------pull network from database with attributes and functions----'''
 G = nx_pgnet_av.read(conn,name).read_from_db(attributes)
@@ -62,10 +55,12 @@ result = nx_pgnet_av.write(conn,'tw_test_new_write').write_to_db(G,attributes,co
 if result == False: exit()
 else: print "Written network back to database with attributes saved to tables."
 
-G = nx_pgnet_av.read(conn,name).pull_from_db(None)
+print "---------------------------------------"
+
+G = nx_pgnet_av.read(conn,name).read_from_db(None)
 print "Loaded written network with no attributes. Has %s nodes and %s edges." %(G.number_of_nodes(), G.number_of_edges())
 
-G = nx_pgnet_av.read(conn,name).pull_from_db(attributes)
+G = nx_pgnet_av.read(conn,name).read_from_db(attributes)
 print "Loaded written network with attributes. Has %s nodes and %s edges." %(G.number_of_nodes(), G.number_of_edges())
 
 functions = nx_pgnet_av.read(conn,name).return_network_functions()

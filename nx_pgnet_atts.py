@@ -216,7 +216,7 @@ class write:
                         print "Found an attriubte to add to tables, %s." %key
                         
                         for nd in G.nodes():
-                            print nd
+                            
                             att_value = False
                             function = False
                             
@@ -252,9 +252,11 @@ class write:
                                     #add function to function table
                                     
                                     function_type = "unspesified"
-                                    
+                                    print function_type
+                                    print function
+                                    print next_functionid
                                     #add function to function table
-                                    result = self.add_functions((function_type,function,next_functionid))
+                                    result = self.add_functions([[function_type,function,next_functionid]])
                                     if result == False:
                                         print "Failed to add function with id %s!" %(next_functionid)
                                     else:
@@ -265,14 +267,19 @@ class write:
                                 if att_value != False and function != False and functionid != '':
                                     result = table_sql(self.conn,self.prefix).update_node_attributes(key,att_value,functionid,nd,overwrite=False)
                                     if result == False:
-                                        raise error_class("Could not update node attributes for node %s." %(nd))
+                                        #raise error_class("Could not update node attributes for node %s." %(nd))
+                                        #print "Could not update node attributes for node %s." %(nd)
+                                        sql = 'UPDATE "%s" SET "FunctionID" = %s, "%s" = %s WHERE "NodeID" = %s' %(self.prefix+"_Nodes_"+key,functionid,key,att_value,nd)
+                                        self.conn.ExecuteSQL(sql)
+                                        #exit()
+
                                     else:
-                                        print "Update node attributes for %s." %nd
+                                        pass
                                 else:
                                     raise error_class("Error! Att value or function is false or function id is blank.")
                             else:
                                 #update attribute table with attribute value, but with no function id
-                                print "Doing the alternative for node %s." %nd
+                                print "No function found so adding an id of 9999 for node %s." %nd
                                 functionid = 9999
                                 result = table_sql(self.conn,self.prefix).update_node_attributes(key,att_value,functionid,nd,overwrite=False)
                                 
@@ -389,22 +396,21 @@ class write:
     def add_atts_randomly(self,G,attribute,att_value_range,functionid_range,overwrite):
         '''
         '''
-        print "Adding atts etc for %s." %attribute
         
         for i in range(1, G.number_of_nodes()+1):
             functionid = random.randint(functionid_range[0],functionid_range[1])
             att_value = random.randint(att_value_range[0],att_value_range[1])
             result = table_sql(self.conn,self.prefix).update_node_attributes(attribute,att_value,functionid,i,overwrite=False)
             if result == False:
-                print "attribute is:", attribute
-                print "att_value is:", att_value
-                print "functionid is:",functionid
-                print "i is:", i
                 print 'FunctionID (%s) not recognised. Check function is in %s_Functions table.' %(functionid,self.prefix)
-                result = self.conn.ExecuteSQL('SELECT * FROM "tyne_wear_m_a_b_Functions"')
-                for row in result:
-                    print row["FunctionID"]
-                exit()
+                #result = self.conn.ExecuteSQL('SELECT * FROM "tyne_wear_m_a_b_Functions"')
+                #for row in result:
+                #    print row["FunctionID"]
+                print '--------------------------------'
+                #sql here to addthe function id manually
+                sql = 'UPDATE "%s" SET "FunctionID" = %s, "%s" = %s WHERE "NodeID" = %s' %(self.prefix+"_Nodes_"+attribute,functionid,attribute,att_value,i)
+                self.conn.ExecuteSQL(sql)
+                #exit()
                 #it works for edges but not nodes. maybe an error in the database side of the function, or in the node id or something
             
         for i in range (1, G.number_of_edges()+1):
@@ -412,7 +418,6 @@ class write:
             att_value = random.randint(att_value_range[0],att_value_range[1])
             result = table_sql(self.conn,self.prefix).update_edge_attributes(attribute,att_value,functionid,i,overwrite=False)
             if result == False: print 'FunctionID not recognised. Check function is in %s_Functions table.' %(self.prefix)
-        print "Completed for %s." %attribute
     
         
 class read:
