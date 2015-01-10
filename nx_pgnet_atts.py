@@ -142,7 +142,7 @@ class write:
             exit()
         self.prefix = prefix
             
-    def write_to_db(self,G,attributes,contains_atts):
+    def write_to_db(self,G,attributes,contains_atts,contains_functions):
         '''
         Writes a networkx instance of a network to a postgres/postgis network 
         database schema. Uses the nx_pgnet library for the mian functionality, 
@@ -168,7 +168,7 @@ class write:
                     
                     #create attribute table with all nodes within
                     result = table_sql(self.conn,self.prefix).create_node_attribute_table(key)
-                    if result <> 1: print 'Could not create %s attribute table' %(key); exit()
+                    if result <> 1: raise error_class("Could not create %s attribute table." %(key))
                     
             #create attribute tables for edges
             for key in attributes[1].keys():
@@ -178,8 +178,8 @@ class write:
 
                     #create attribute table with all edges within
                     result = table_sql(self.conn,self.prefix).create_edge_attribute_table(key)
-                    if result <> 1: print 'Could not create %s attribute table' %(key); exit()
-
+                    if result <> 1: raise error_class ("Could not create %s attribute table." %(key))
+                    
             if contains_atts == False:
                 #if att columns exist in the network rename columns
                 for key in attributes[0].keys():
@@ -219,10 +219,13 @@ class write:
                             except:
                                 raise error_class("Warning! At least one of the nodes does not have a specified attribute, %s, attached to it." %(key))
                             #check attribute function available for node
-                            try:
-                                function = G.node[nd][key+"_function"]
-                            except:
-                                raise error_class("Warning! At least one of the nodes does not have a specified attribute, %s, attached to it." %(key+"_function"))
+                            if contains_functions == True:
+                                try:
+                                    function = G.node[nd][key+"_function"]
+                                except:
+                                    raise error_class("Warning! At least one of the nodes does not have a specified attribute, %s, attached to it." %(key+"_function"))
+                
+                for key in attributes[1].keys():
                     if attributes[1][key] == True:
                         for edg in G.edges():
                             edge = G.edge[edg[0]][edg[1]]
@@ -232,10 +235,11 @@ class write:
                             except:
                                 raise error_class("Warning! At least one of the edges does not have a specified attribute, %s, attached to it." %(key))
                             #check attribute function in edge
-                            try:
-                                function = edge[key+"_function"]
-                            except:
-                                raise error_class("Warning! At least one of the edges does not have a specified attribute, %s, attached to it." %(key+"_function"))
+                            if contains_functions == True:
+                                try:
+                                    function = edge[key+"_function"]
+                                except:
+                                    raise error_class("Warning! At least one of the edges does not have a specified attribute, %s, attached to it." %(key+"_function"))
                                 
                 #check if node attribute exists and copy to table if so
                 for key in attributes[0].keys():
@@ -246,11 +250,15 @@ class write:
                         
                         for nd in G.nodes():
                             
-                            att_value = False
-                            function = False
-
+                            #get the attribute value  
                             att_value = G.node[nd][key]
-                            function = G.node[nd][key+"_function"]
+                            #get the function if set as existing
+                            if contains_functions == True:
+                                function = G.node[nd][key+"_function"]
+                            else:
+                                #if function not an attribute
+                                function = False
+                                
                             #if a function exists add and get id
                             if function != False:
                                 
@@ -266,54 +274,51 @@ class write:
                                 
                                 #if the function id has not been found
                                 if functionid == '':
-                                    #add function to function table
+                                    #decalare the type as unknown/unspecified                                    
+                                    function_type = "unspecified"
                                     
-                                    function_type = "unspesified"
-                                    print function_type
-                                    print function
-                                    print next_functionid
                                     #add function to function table
                                     result = self.add_functions([[function_type,function,next_functionid]])
                                     if result == False:
-                                        print "Failed to add function with id %s!" %(next_functionid)
+                                        raise error_class("Failed to add function with id %s!" %(next_functionid))
+                                        #print "Failed to add function with id %s!" %(next_functionid)
                                     else:
                                         functionid = next_functionid
                                         next_functionid += 1
                                         
                                 #update attribute table with att value and function id
                                 if att_value != False and function != False and functionid != '':
-                                    result = table_sql(self.conn,self.prefix).update_node_attributes(key,att_value,functionid,nd,overwrite=False)
-                                    if result == False:
-                                        #raise error_class("Could not update node attributes for node %s." %(nd))
-                                        #print "Could not update node attributes for node %s." %(nd)
-                                        sql = 'UPDATE "%s" SET "FunctionID" = %s, "%s" = %s WHERE "NodeID" = %s' %(self.prefix+"_Nodes_"+key,functionid,key,att_value,nd)
-                                        self.conn.ExecuteSQL(sql)
-                                        #exit()
+                                    #result = table_sql(self.conn,self.prefix).update_node_attributes(key,att_value,functionid,nd,overwrite=False)
+                                    sql = 'UPDATE "%s" SET "FunctionID" = %s, "%s" = %s WHERE "NodeID" = %s' %(self.prefix+"_Nodes_"+key,functionid,key,att_value,nd)
+                                    self.conn.ExecuteSQL(sql)
 
+                                    if result == False:
+                                        raise error_class("Could not update node attributes for node %s." %(nd))
                                     else:
                                         pass
                                 else:
-                                    raise error_class("Error! Att value or function is false or function id is blank.")
+                                    raise error_class("Error! Attribute value variable or function variable is false or function id variable is blank.")
                             else:
-                                #update attribute table with attribute value, but with no function id
-                                print "No function found so adding an id of 9999 for node %s." %nd
-                                functionid = 9999
-                                result = table_sql(self.conn,self.prefix).update_node_attributes(key,att_value,functionid,nd,overwrite=False)
-                                
-                                
+                                #don't add a function id
+                                pass
+                                                                
                 #check if edge attribute exists and copy to table if so
                 for key in attributes[1].keys():
                     if attributes[1][key] == True:
                         #loop through edges
                         for edg in G.edges():
                             edge = G.edge[edg[0]][edg[1]]
-
-                            att_value = False
-                            function = False
        
+                            #get attribute value
                             att_value = edge[key]
-                            function = edge[key+"_function"]
                             
+                            #get function
+                            if contains_functions == True:
+                                function = edge[key+"_function"]
+                            else:
+                                function = False
+                            
+                            #if a function exists get function id and update table
                             if function != False:
 
                                 table_p = '"'+self.prefix + '_Functions"'
@@ -333,18 +338,18 @@ class write:
                                     #add function to table
                                     result = self.add_functions((function_type,function,next_functionid))
                                     if result == False:
-                                        print "Failed to add function with id %s!" %(next_functionid)
+                                        raise error_class("Failed to add function with id %s!" %(next_functionid))
                                     else:
                                         functionid = next_functionid
                                         next_functionid += 1
                                 if att_value != False and functionid != '':                            
                                     #updates the edge attribute table - uses edge id and function id
                                     result = table_sql(self.conn,self.prefix).update_edge_attributes(key,att_value,functionid,edge["EdgeID"],overwrite=False)
-                            else:
-                                functionid = 9999
-                                #update attribute table with att value only
-                                result = table_sql(self.conn,self.prefix).update_edge_attributes(key,att_value,functionid,edge["EdgeID"],overwrite=False)
-                               
+                            #if no function exists add a default id of 9999 - does not work as function is not in function table
+                            else:  
+                                #leave function id blank as nothing specified
+                                pass
+                                                              
                     else: pass
                             
     def add_functions(self,functions):

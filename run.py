@@ -11,21 +11,21 @@ import nx_pg
 import nx_pgnet_atts as nx_pgnet_av #read and write methods to db
 
 '''-------------pull network from database and create networkx instance-----'''
-name = "sample"
-#name = "tyne_wear_m_a_b"
+#name = "sample"
+name = "tyne_wear_m_a_b"
 conn = ogr.Open("PG:dbname='_new_schema_SB' host='localhost'port='5433' user='postgres' password='aaSD2011'")
 sql = ("SELECT np_delete_all_tables('%s');" %(name))
 conn.ExecuteSQL(sql)
 
 '''-------------write network back to create database instance--------------'''
 #G = nx_pg.read_pg(conn, 'sample_lines','sample_points')
-G = nx_pg.read_pg(conn, 'sample_lines_atts','sample_points_atts')
-#G = nx_pg.read_pg(conn, 'tyne_wear_m_a_b') #no attributes added at this time
-contains_atts = True
+#G = nx_pg.read_pg(conn, 'sample_lines_atts','sample_points_atts')
+G = nx_pg.read_pg(conn, 'tyne_wear_m_a_b') #no attributes added at this time
+contains_atts = False; contains_functions = False
 '''-------------add network to db with specified attributes-----------------'''
 #attributes = None
-attributes = [{'flow':False, 'capacity':True, 'storage':False, 'resistance':False, 'latency':False},{'flow':True, 'capacity':True, 'length':False, 'resistance':False, 'stacking':False}]
-result = nx_pgnet_av.write(conn,name).write_to_db(G,attributes, contains_atts)
+attributes = [{'flow':False, 'capacity':True, 'storage':False, 'resistance':False, 'latency':False},{'flow':False, 'capacity':True, 'length':False, 'resistance':False, 'stacking':False}]
+result = nx_pgnet_av.write(conn,name).write_to_db(G,attributes, contains_atts, contains_functions)
 if result == False: exit()
 else: print "Network added."
 
@@ -51,7 +51,7 @@ print "Loaded network. Has %s nodes and %s edges." %(G.number_of_nodes(), G.numb
 print "---------------------------------------"
 
 #contains_atts = write atts from network into database tables
-result = nx_pgnet_av.write(conn,'tw_test_new_write').write_to_db(G,attributes,contains_atts = True)
+result = nx_pgnet_av.write(conn,'tw_test_new_write').write_to_db(G,attributes,contains_atts = True, contains_functions = False)
 if result == False: exit()
 else: print "Written network back to database with attributes saved to tables."
 
