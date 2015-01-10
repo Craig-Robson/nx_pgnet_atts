@@ -11,21 +11,21 @@ import nx_pg
 import nx_pgnet_atts as nx_pgnet_av #read and write methods to db
 
 '''-------------pull network from database and create networkx instance-----'''
-#name = "sample"
-name = "tyne_wear_m_a_b"
+name = "sample"
+#name = "tyne_wear_m_a_b"
 conn = ogr.Open("PG:dbname='_new_schema_SB' host='localhost'port='5433' user='postgres' password='aaSD2011'")
 sql = ("SELECT np_delete_all_tables('%s');" %(name))
 conn.ExecuteSQL(sql)
 
 '''-------------write network back to create database instance--------------'''
 #G = nx_pg.read_pg(conn, 'sample_lines','sample_points')
-#G = nx_pg.read_pg(conn, 'sample_lines_atts','sample_points_atts')
-G = nx_pg.read_pg(conn, 'tyne_wear_m_a_b') #no attributes added at this time
-
+G = nx_pg.read_pg(conn, 'sample_lines_atts','sample_points_atts')
+#G = nx_pg.read_pg(conn, 'tyne_wear_m_a_b') #no attributes added at this time
+contains_atts = True
 '''-------------add network to db with specified attributes-----------------'''
 #attributes = None
-attributes = [{'flow':False, 'capacity':True, 'storage':False, 'resistance':False, 'latency':False},{'flow':False, 'capacity':True, 'length':False, 'resistance':False, 'stacking':False}]
-result = nx_pgnet_av.write(conn,name).write_to_db(G,attributes, contains_atts = False)
+attributes = [{'flow':False, 'capacity':True, 'storage':False, 'resistance':False, 'latency':False},{'flow':True, 'capacity':True, 'length':False, 'resistance':False, 'stacking':False}]
+result = nx_pgnet_av.write(conn,name).write_to_db(G,attributes, contains_atts)
 if result == False: exit()
 else: print "Network added."
 
@@ -38,11 +38,11 @@ if result == False: print "Error adding functions! Check function table exists a
 else: print "All functions added successfully."
 
 '''-------------add attribute values and function ids to nodes and edges----'''
-
-attribute = 'flow' ; att_value_range = [5,25] ; functionid_range = [0,2]
-nx_pgnet_av.write(conn,name).add_atts_randomly(G,attribute,att_value_range,functionid_range,overwrite=False)
-attribute = 'capacity' ; att_value_range = [2,56] ; functionid_range = [0,2]
-nx_pgnet_av.write(conn,name).add_atts_randomly(G,attribute,att_value_range,functionid_range,overwrite=False)
+if contains_atts == False:
+    attribute = 'flow' ; att_value_range = [5,25] ; functionid_range = [0,2]
+    nx_pgnet_av.write(conn,name).add_atts_randomly(G,attribute,att_value_range,functionid_range,overwrite=False)
+    attribute = 'capacity' ; att_value_range = [2,56] ; functionid_range = [0,2]
+    nx_pgnet_av.write(conn,name).add_atts_randomly(G,attribute,att_value_range,functionid_range,overwrite=False)
 
 '''-------------pull network from database with attributes and functions----'''
 G = nx_pgnet_av.read(conn,name).read_from_db(attributes)

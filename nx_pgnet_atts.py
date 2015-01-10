@@ -208,6 +208,35 @@ class write:
                     #if values in table, use value higher than list max
                     next_functionid = max(table_functionids) + 1
 
+                #check if all attributes exist which have been set as True
+                for key in attributes[0].keys():
+                    if attributes[0][key] == True:
+                        
+                        for nd in G.nodes():
+                            #check attribute available for node
+                            try:
+                                att_value = G.node[nd][key]
+                            except:
+                                raise error_class("Warning! At least one of the nodes does not have a specified attribute, %s, attached to it." %(key))
+                            #check attribute function available for node
+                            try:
+                                function = G.node[nd][key+"_function"]
+                            except:
+                                raise error_class("Warning! At least one of the nodes does not have a specified attribute, %s, attached to it." %(key+"_function"))
+                    if attributes[1][key] == True:
+                        for edg in G.edges():
+                            edge = G.edge[edg[0]][edg[1]]
+                            #check attribute available in edge
+                            try:
+                                att_value = edge[key]
+                            except:
+                                raise error_class("Warning! At least one of the edges does not have a specified attribute, %s, attached to it." %(key))
+                            #check attribute function in edge
+                            try:
+                                function = edge[key+"_function"]
+                            except:
+                                raise error_class("Warning! At least one of the edges does not have a specified attribute, %s, attached to it." %(key+"_function"))
+                                
                 #check if node attribute exists and copy to table if so
                 for key in attributes[0].keys():
                     #needs to also write functions to table, first checking if 
@@ -219,21 +248,9 @@ class write:
                             
                             att_value = False
                             function = False
-                            
-                            #check attribute available for node
-                            try:
-                                att_value = G.node[nd][key]
-                            except:
-                                print G.node[nd].keys()
-                                raise error_class("Warning! The attribute '%s' is not part of node %s. Process canceled." %(key,nd))
-                                
-                            #check attribute function available for node
-                            try:
-                                function = G.node[nd][key+"_function"]
-                            except:
-                                #raise error_class("Warning! The function for the atrribute '%s' is not an attribute in the network. Process canceled."%key)
-                                print "Warning! The function for the atrribute '%s' is not an attribute of node %s."%(key,nd)
-                            
+
+                            att_value = G.node[nd][key]
+                            function = G.node[nd][key+"_function"]
                             #if a function exists add and get id
                             if function != False:
                                 
@@ -288,24 +305,14 @@ class write:
                 for key in attributes[1].keys():
                     if attributes[1][key] == True:
                         #loop through edges
-                        for edg in G.edges(data=True):
+                        for edg in G.edges():
                             edge = G.edge[edg[0]][edg[1]]
 
                             att_value = False
                             function = False
-                            
-                            try:
-                                att_value = edge[key]
-                            except:
-                                raise error_class("Warning! Attribute (%s) is not part of the network. Process canceled." %key)
-                                #return False
-                                                        
-                            try:
-                                function = edge[key+"_function"]
-                            except:
-                                #raise error_class("Warning! Atrribute (%s) function is not an attribute in the network. Process canceled." %key)
-                                print "Warning! Atrribute (%s) function is not an attribute in the network." %key
-                                #return False
+       
+                            att_value = edge[key]
+                            function = edge[key+"_function"]
                             
                             if function != False:
 
