@@ -119,7 +119,6 @@ class table_sql:
         This is used as there is an as yet unidentified issue with the above 
         method.
         '''
-        print 'Using new update method'
         sql = 'UPDATE "%s" SET "FunctionID" = %s, "%s" = %s WHERE "NodeID" = %s' %(self.prefix+"_Nodes_"+attribute,functionid,attribute,att_value,nodeid)
         result = self.conn.ExecuteSQL(sql)
         return result
@@ -136,6 +135,37 @@ class table_sql:
               result = row.np_add_edge_attribute
               
         return result
+    
+    def update_function(self,functionid,function_text,function_type):
+        '''
+        '''
+        if function_type == None:
+            sql = 'UPDATE "%s" SET "function" = %s WHERE "FunctionID" = %s' %(self.prefix+"_Functions",function_text,functionid)
+        else:
+            function_type = "'" + function_type + "'"
+            sql = 'UPDATE "%s" SET "function" = %s, "type" = %s WHERE "FunctionID" = %s' %(self.prefix+"_Functions",function_text,function_type,functionid)
+        
+        self.conn.ExecuteSQL(sql)
+
+        return
+    
+    def update_node_functionid(self,attribute,functionid,nodeid):
+        '''
+        Updaets the functionid for a node in the network.
+        '''        
+        sql = 'UPDATE "%s" SET "FunctionID" = %s WHERE "NodeID" = %s' %(self.prefix+"_Nodes_"+attribute,functionid,nodeid)
+        self.conn.ExecuteSQL(sql)
+        
+        return
+        
+    def update_edge_functionid(self,attribute,functionid,edgeid):
+        '''
+        Updates the function id of an edge in the network.
+        '''
+        sql = 'UPDATE "%s" SET "FunctionID" = %s WHERE "EdgeID" = %s' %(self.prefix+"_Edges_"+attribute,functionid,edgeid)
+        self.conn.ExecuteSQL(sql)
+        
+        return
     
     def get_function_ids(self,function_table):
         '''
@@ -199,9 +229,8 @@ class write:
         '''
         self.conn = db_conn
         if self.conn == None:
-            #raise Error('No connection to database.')
-            print "No connection to databse!"
-            exit()
+            raise error_class('No connection to database!')
+            
         self.prefix = prefix
             
     def write_to_db(self,G,attributes,contains_atts,contains_functions):
@@ -211,7 +240,19 @@ class write:
         then facilitates the building of the extra tables for the node and egde 
         attributes and relevant functions.
         '''
-
+        '''
+        #check here for attribute headings being in network
+        if contains_atts == False:
+            #if att columns exist in the network rename columns (appends'_1')
+            for key in attributes[0].keys():
+                if attributes[0][key] == True: 
+                    print "Renaming column.",key
+                    table_sql(self.conn,self.prefix).rename_node_column(key)                    
+            for key in attributes[1].keys():
+                if attributes[1][key] == True: 
+                    print "Renaming column.",key
+                    table_sql(self.conn,self.prefix).rename_edge_column(key) 
+        '''
         #write network to database
         nx_pgnet.write(self.conn).pgnet(G, self.prefix, 27700, overwrite=True, directed = False, multigraph = False)
         #pull back so we have edge id's which might be needed later
@@ -243,6 +284,7 @@ class write:
                     if result <> 1: raise error_class ("Could not create %s attribute table." %(key))
                     
             if contains_atts == False:
+                #pass
                 #if att columns exist in the network rename columns
                 for key in attributes[0].keys():
                     if attributes[0][key] == True: table_sql(self.conn,self.prefix).rename_node_column(key)                    
@@ -302,7 +344,6 @@ class write:
                     #needs to also write functions to table, first checking if 
                     #it is already there. If get functionid, if not add.
                     if attributes[0][key] == True:
-                        print "Found an attriubte to add to tables, %s." %key
                         
                         for nd in G.nodes():
                             
@@ -388,18 +429,19 @@ class write:
                                 if att_value != False and functionid != '':                            
                                     #updates the edge attribute table - uses edge id and function id
                                     result = table_sql(self.conn,self.prefix).update_edge_attributes(key,att_value,functionid,edge["EdgeID"],overwrite=False)
-                            #if no function exists add a default id of 9999 - does not work as function is not in function table
+                            
+                            #if no function exists
                             else:  
                                 #leave function id blank as nothing specified
                                 pass
-                                                              
                     else: pass
                             
     def add_functions(self,functions):
         '''
         Adds a new function to the function table for the specified network.
         '''
-        #check function table exists        
+        #check function table exists
+        
         sql = "SELECT * FROM %s" %(self.prefix+"_Functions")        
         try:
             self.conn.ExecuteSQL(sql)
@@ -410,6 +452,7 @@ class write:
             
         bad_results = 0
         for vals in functions:
+
             #need to check when loading that all id's are unique
             sql = ("SELECT np_add_function('%s','%s','%s',%s);" %(self.prefix,vals[0],vals[1],vals[2])) #table prefix, type, function, id[pk]
             result = True
@@ -428,7 +471,7 @@ class write:
         Updates the function text and the function type for a speified 
         function id with the users inputs.
         '''
-        function_text = "'"+function_text+"'"
+        function_text = "'" + function_text + "'"
         
         #to check the function exists in the table
         sql = 'SELECT * FROM "%s"' %(self.prefix+"_Functions")
@@ -436,17 +479,10 @@ class write:
         
         for row in result:
             if row["FunctionID"] == functionid:
-                if function_type == None:
-                    sql = 'UPDATE "%s" SET "function" = %s WHERE "FunctionID" = %s' %(self.prefix+"_Functions",function_text,functionid)
-                else:
-                    function_type = "'"+function_type+"'"
-                    sql = 'UPDATE "%s" SET "function" = %s, "type" = %s WHERE "FunctionID" = %s' %(self.prefix+"_Functions",function_text,function_type,functionid)
-                
-                self.conn.ExecuteSQL(sql)
-                return True
+                result = table_sql(self.conn,self.prefix).update_function(functionid,function_text,function_type)
             else: pass
 
-        return False
+        return True
         
     def add_atts_randomly(self,G,attribute,att_value_range,functionid_range,overwrite):
         '''
@@ -457,22 +493,34 @@ class write:
             att_value = random.randint(att_value_range[0],att_value_range[1])
             result = table_sql(self.conn,self.prefix).update_node_attributes(attribute,att_value,functionid,i,overwrite=False)
             if result == False:
-                print 'FunctionID (%s) not recognised. Check function is in %s_Functions table.' %(functionid,self.prefix)
-                #result = self.conn.ExecuteSQL('SELECT * FROM "tyne_wear_m_a_b_Functions"')
-                #for row in result:
-                #    print row["FunctionID"]
-                print '--------------------------------'
-                #sql here to addthe function id manually
-                sql = 'UPDATE "%s" SET "FunctionID" = %s, "%s" = %s WHERE "NodeID" = %s' %(self.prefix+"_Nodes_"+attribute,functionid,attribute,att_value,i)
-                self.conn.ExecuteSQL(sql)
-                #exit()
-                #it works for edges but not nodes. maybe an error in the database side of the function, or in the node id or something
-            
+                functionids = table_sql(self.conn,self.prefix).get_function_ids(self.prefix+"_Functions")
+                for _id in functionids:
+                    if functionid == _id:
+                        functionid_exists = True
+                        break
+                if functionid_exists == False:
+                    raise error_class('FunctionID (%s) not recognised. Check function is in %s_Functions table.' %(functionid,self.prefix))
+                else:
+                    raise error_class('Unknown error! Function with an id of %s exists in %s_Functions table but could not be written in the node table.' %(functionid,self.prefix))
+                raise error_class("SHOULD NOT BE DOING THIS")
+                #sql here to add the function id manually
+                #sql = 'UPDATE "%s" SET "FunctionID" = %s, "%s" = %s WHERE "NodeID" = %s' %(self.prefix+"_Nodes_"+attribute,functionid,attribute,att_value,i)
+                #self.conn.ExecuteSQL(sql)
+                            
         for i in range (1, G.number_of_edges()+1):
             functionid = random.randint(functionid_range[0],functionid_range[1])
             att_value = random.randint(att_value_range[0],att_value_range[1])
             result = table_sql(self.conn,self.prefix).update_edge_attributes(attribute,att_value,functionid,i,overwrite=False)
-            if result == False: print 'FunctionID not recognised. Check function is in %s_Functions table.' %(self.prefix)
+            if result == False: 
+                functionids = table_sql(self.conn,self.prefix).get_function_ids(self.prefix+"_Functions")
+                for _id in functionids:
+                    if functionid == _id:
+                        functionid_exists = True
+                        break
+                if functionid_exists == False:
+                    raise error_class('FunctionID (%s) not recognised. Check function is in %s_Functions table.' %(functionid,self.prefix))
+                else:
+                    raise error_class('Unknown error! Function with an id of %s exists in %s_Functions table but could not be written in the edge table.' %(functionid,self.prefix))
     
         
 class read:
@@ -484,9 +532,8 @@ class read:
         '''
         self.conn = db_conn
         if self.conn == None:
-            #raise Error('No connection to database.')
-            print "No connection to databse!"
-            exit()
+            raise error_class('No connection to database!')
+            
         self.prefix = name
 
     def read_from_db(self, attributes):
@@ -516,7 +563,7 @@ class read:
                     node_table = self.prefix + "_Nodes"
                     att_table = self.prefix + "_Nodes_" + key
                     #get ndoe data for attribute
-                    table_sql(self.conn,self.prefix).get_node_data(key,node_table,function_table,att_table)
+                    result = table_sql(self.conn,self.prefix).get_node_data(key,node_table,function_table,att_table)
                     
                     for row in result:
                         #using the node pk add to the attributes of the nodes
@@ -549,7 +596,6 @@ class read:
         
         #loop though the returned rows
         for row in result:
-            #print "Function ID: %s, Function: %s, Function type: %s" %(row["FunctionID"],row["function"],row["type"])
             functions.append(row)
         
         return functions
