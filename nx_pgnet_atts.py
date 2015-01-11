@@ -114,6 +114,16 @@ class table_sql:
               
         return result
     
+    def update_node_attributes2(self,attribute,att_value,functionid,nodeid,overwrite):
+        '''
+        This is used as there is an as yet unidentified issue with the above 
+        method.
+        '''
+        print 'Using new update method'
+        sql = 'UPDATE "%s" SET "FunctionID" = %s, "%s" = %s WHERE "NodeID" = %s' %(self.prefix+"_Nodes_"+attribute,functionid,attribute,att_value,nodeid)
+        result = self.conn.ExecuteSQL(sql)
+        return result
+
     def update_edge_attributes(self,attribute,att_value,functionid,edgeid,overwrite):
         '''
         Update the attribute of an edge in the specified attribute table.
@@ -125,6 +135,58 @@ class table_sql:
         for row in self.conn.ExecuteSQL(sql):
               result = row.np_add_edge_attribute
               
+        return result
+    
+    def get_function_ids(self,function_table):
+        '''
+        Returns a list of the function ids which already exist in the function 
+        table.
+        '''
+        sql = "SELECT * FROM %s" %(function_table)
+        result = self.conn.ExecuteSQL(sql)
+
+        functionids = []
+
+        for row in result:
+            #adds the function id to a list
+            functionids.append(row['FunctionID'])
+        
+        return functionids
+    
+    def get_functionid(self,function_table,function):
+        '''
+        Returns the id of a function if in the function tabale. If not returns 
+        a blank id('').
+        '''
+        #check if function exists in function table
+        sql = "SELECT * FROM %s WHERE function = '%s'" %(function_table,function)
+                           
+        result = self.conn.ExecuteSQL(sql)
+        functionid = '' #default value, over written if function found in table
+                                
+        for row in result:
+            #if function exists get id
+            functionid = row["FunctionID"]
+            
+        return functionid
+        
+    def get_node_data(self,key,node_table,function_table,att_table):
+        '''
+        Returns a list of data with each entry being the attributes for a node.
+        '''
+        sql = 'SELECT node_table.*, snc.%s, snc.function FROM "%s" AS node_table JOIN (SELECT * FROM "%s" AS function_table JOIN "%s" snc ON function_table."FunctionID" = snc."FunctionID") AS snc ON node_table."NodeID" = snc."NodeID"' %(key,node_table,function_table,att_table)
+        result = self.conn.ExecuteSQL(sql)
+        
+        return result
+        
+    def get_edge_data(self,key,edge_table,function_table,att_table):
+        '''
+        Returns a list of data with each entry being the attributes for a edge.
+        '''        
+
+        sql = 'SELECT edge_table.*, snf.%s, snf.function FROM "%s" AS edge_table JOIN (SELECT * FROM "%s" AS function_table JOIN "%s" snf ON function_table."FunctionID" = snf."FunctionID") AS snf ON edge_table."EdgeID" = snf."EdgeID"'%(key,edge_table,function_table,att_table)
+        result = self.conn.ExecuteSQL(sql)
+        
         return result
         
 class write:
@@ -192,14 +254,8 @@ class write:
                 #define function table                            
                 function_table = '"'+self.prefix + '_Functions"'
                 
-                #find a function id
-                sql = "SELECT * FROM %s" %(function_table)
-                result = self.conn.ExecuteSQL(sql)
-
-                table_functionids = []
-                for row in result:
-                    #adds the function id to a list
-                    table_functionids.append(row['FunctionID'])
+                #return a list of function id's
+                table_functionids = table_sql(self.conn, self.prefix).get_function_ids(function_table)
                
                #if table empty, use an id of zero
                 if table_functionids == []:
@@ -258,19 +314,12 @@ class write:
                             else:
                                 #if function not an attribute
                                 function = False
-                                
+                            
                             #if a function exists add and get id
                             if function != False:
                                 
-                                #check if function exists in function table
-                                sql = "SELECT * FROM %s WHERE function = '%s'" %(function_table,function)
-                           
-                                result = self.conn.ExecuteSQL(sql)
-                                functionid = ''
-                                
-                                for row in result:
-                                    #if function exists get id
-                                    functionid = row["FunctionID"]
+                                #get id of function if exists else = ''
+                                functionid = table_sql(self.conn,self.prefix).get_functionid(function_table,function)
                                 
                                 #if the function id has not been found
                                 if functionid == '':
@@ -285,12 +334,11 @@ class write:
                                     else:
                                         functionid = next_functionid
                                         next_functionid += 1
-                                        
+                                                               
                                 #update attribute table with att value and function id
                                 if att_value != False and function != False and functionid != '':
                                     #result = table_sql(self.conn,self.prefix).update_node_attributes(key,att_value,functionid,nd,overwrite=False)
-                                    sql = 'UPDATE "%s" SET "FunctionID" = %s, "%s" = %s WHERE "NodeID" = %s' %(self.prefix+"_Nodes_"+key,functionid,key,att_value,nd)
-                                    self.conn.ExecuteSQL(sql)
+                                    result = table_sql(self.conn,self.prefix).update_node_attributes2(key,att_value,functionid,nd,overwrite=False)
 
                                     if result == False:
                                         raise error_class("Could not update node attributes for node %s." %(nd))
@@ -321,13 +369,8 @@ class write:
                             #if a function exists get function id and update table
                             if function != False:
 
-                                table_p = '"'+self.prefix + '_Functions"'
-                                sql = "SELECT * FROM %s WHERE function = '%s'" %(table_p,function)
-                           
-                                result = self.conn.ExecuteSQL(sql)
-                                functionid = ''
-                                for row in result:
-                                    functionid = row["FunctionID"]
+                                function_table = '"'+self.prefix + '_Functions"'
+                                functionid = table_sql(self.conn,self.prefix).get_functionid(function_table,function)
                                 
                                 if functionid == '':
                                     #add function to function table, find a function id
@@ -472,9 +515,9 @@ class read:
                 if attributes[0][key] == True:
                     node_table = self.prefix + "_Nodes"
                     att_table = self.prefix + "_Nodes_" + key
-                    #get data for attribute
-                    sql = 'SELECT node_table.*, snc.%s, snc.function FROM "%s" AS node_table JOIN (SELECT * FROM "%s" AS function_table JOIN "%s" snc ON function_table."FunctionID" = snc."FunctionID") AS snc ON node_table."NodeID" = snc."NodeID"' %(key,node_table,function_table,att_table)
-                    result = self.conn.ExecuteSQL(sql)
+                    #get ndoe data for attribute
+                    table_sql(self.conn,self.prefix).get_node_data(key,node_table,function_table,att_table)
+                    
                     for row in result:
                         #using the node pk add to the attributes of the nodes
                         #add to the networkx instance
@@ -486,8 +529,8 @@ class read:
                     #get data for attribute
                     edge_table = self.prefix + "_Edges"
                     att_table = self.prefix + "_Edges_" + key
-                    sql = 'SELECT edge_table.*, snf.%s, snf.function FROM "%s" AS edge_table JOIN (SELECT * FROM "%s" AS function_table JOIN "%s" snf ON function_table."FunctionID" = snf."FunctionID") AS snf ON edge_table."EdgeID" = snf."EdgeID"'%(key,edge_table,function_table,att_table)
-                    result = self.conn.ExecuteSQL(sql)
+                    result = table_sql(self.conn,self.prefix).get_edge_data(key,edge_table,function_table,att_table)
+                    
                     for row in result:
                         #using the node pk add to the attributes of the nodes
                         #add to the networkx instance
@@ -513,7 +556,6 @@ class read:
 
 class error_class(Exception):
     '''
-    
     '''
     
     def __init__(self, value):
