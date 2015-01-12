@@ -172,14 +172,16 @@ class table_sql:
         Returns a list of the function ids which already exist in the function 
         table.
         '''
-        sql = "SELECT * FROM %s" %(function_table)
-        result = self.conn.ExecuteSQL(sql)
-
         functionids = []
-
-        for row in result:
-            #adds the function id to a list
-            functionids.append(row['FunctionID'])
+        
+        sql = "SELECT * FROM %s" %(function_table)
+        try:
+            result = self.conn.ExecuteSQL(sql)
+            for row in result:
+                #adds the function id to a list
+                functionids.append(row['FunctionID'])
+        except: 
+            functionids = False
         
         return functionids
     
@@ -240,7 +242,7 @@ class write:
         then facilitates the building of the extra tables for the node and egde 
         attributes and relevant functions.
         '''
-        '''
+        
         #check here for attribute headings being in network
         if contains_atts == False:
             #if att columns exist in the network rename columns (appends'_1')
@@ -252,11 +254,13 @@ class write:
                 if attributes[1][key] == True: 
                     print "Renaming column.",key
                     table_sql(self.conn,self.prefix).rename_edge_column(key) 
-        '''
+        
+        
         #write network to database
         nx_pgnet.write(self.conn).pgnet(G, self.prefix, 27700, overwrite=True, directed = False, multigraph = False)
         #pull back so we have edge id's which might be needed later
         G = nx_pgnet.read(self.conn).pgnet(self.prefix) #this is causing issues with attributes - not 100% why
+        print G.node[1]
         
         if attributes != None:
     
@@ -315,13 +319,13 @@ class write:
                             try:
                                 att_value = G.node[nd][key]
                             except:
-                                raise error_class("Warning! At least one of the nodes does not have a specified attribute, %s, attached to it." %(key))
+                                raise error_class("Warning! At least one of the nodes does not have a specified attribute, %s, attached to it. Is the contains_atts variable set correctly?" %(key))
                             #check attribute function available for node
                             if contains_functions == True:
                                 try:
                                     function = G.node[nd][key+"_function"]
                                 except:
-                                    raise error_class("Warning! At least one of the nodes does not have a specified attribute, %s, attached to it." %(key+"_function"))
+                                    raise error_class("Warning! At least one of the nodes does not have a specified attribute, %s, attached to it. Is the contains_functions variable set correctly?" %(key+"_function"))
                 
                 for key in attributes[1].keys():
                     if attributes[1][key] == True:
@@ -494,6 +498,8 @@ class write:
             result = table_sql(self.conn,self.prefix).update_node_attributes(attribute,att_value,functionid,i,overwrite=False)
             if result == False:
                 functionids = table_sql(self.conn,self.prefix).get_function_ids(self.prefix+"_Functions")
+                if functionids == False:
+                    raise error_class('Error!. Could not get function ids. %s_Functions table does not exist. Check "contains_functions" variable is set correctly. Set as False if network does not contain all attribute functions.'%(self.prefix))
                 for _id in functionids:
                     if functionid == _id:
                         functionid_exists = True
@@ -543,7 +549,12 @@ class read:
         functions to pull specific attributes from the database and adds them 
         as attributes of teh nodes and edges.
         '''
-        G = nx_pgnet.read(self.conn).pgnet(self.prefix)
+        
+        try:
+            #is the error caused by me renaming the column after the building of the tables????
+            G = nx_pgnet.read(self.conn).pgnet(self.prefix)
+        except:
+            raise error_class("Could not read %s network. Check contain_atts variable is set correctly." %(self.prefix))
         
         #check attribute tables exist before trying to retrieve data
         if attributes != None:
