@@ -26,7 +26,36 @@ class table_sql:
             print "No connection to databse!"
             exit()
         self.prefix = name
-               
+    
+    def populate_role_table(self,):
+        '''
+        '''
+        sql = ";"
+        
+        return
+    
+    def create_units_table(self,):
+        '''
+        '''
+        sql = ("SELECT * FROM np_create_units_table ('%s');" % (self.prefix))
+        result = None
+        for row in self.conn.ExecuteSQL(sql):
+            
+            result = row.np_create_units_table
+        
+        return result
+        
+    def create_role_table(self,):
+        '''
+        '''
+        sql = ("SELECT * FROM np_create_role_table ('%s');" % (self.prefix))
+        result = None
+        for row in self.conn.ExecuteSQL(sql):
+            
+            result = row.np_create_role_table
+            
+        return result
+        
     def create_function_table(self,):
         '''
         '''
@@ -260,7 +289,14 @@ class write:
         nx_pgnet.write(self.conn).pgnet(G, self.prefix, 27700, overwrite=True, directed = False, multigraph = False)
         #pull back so we have edge id's which might be needed later
         G = nx_pgnet.read(self.conn).pgnet(self.prefix) #this is causing issues with attributes - not 100% why
-        print G.node[1]
+        #print G.node[1]
+        
+        #create anscilary tables
+        table_sql(self.conn,self.prefix).create_units_table()
+        table_sql(self.conn,self.prefix).create_role_table()
+        #checks built network for role attribute
+        result = self.populate_roles(G)
+        #table_sql(self.conn,self.prefix).populate_role_table()
         
         if attributes != None:
     
@@ -439,7 +475,73 @@ class write:
                                 #leave function id blank as nothing specified
                                 pass
                     else: pass
-                            
+    def populate_roles(self, G):
+        '''
+        '''
+        role_att=False; roles=[]
+        #check node table if role column exists
+        sql = '''SELECT * FROM "%s"''' %(self.prefix+'_Nodes')
+        result = self.conn.ExecuteSQL(sql)
+        for row in result:
+            if role_att==False:
+                #check if a role attribute exists
+                for key in row.keys():
+                    if key=='role': 
+                        role_att=True
+                        #add new role id column to node table
+                        sql = '''
+                              ALTER TABLE "%s"  
+                              ADD "role_id" integer
+                              ''' %(self.prefix+'_Nodes')
+                        self.conn.ExecuteSQL(sql)
+            if role_att==True:
+                #check if role already in role table
+                role = row['role']
+                add_role=True
+                for text in roles:
+                    if role == text:
+                        role=False
+                        break
+                if add_role==True:
+                    #check if role already exists in role table
+                    sql = '''
+                          SELECT * FROM "%s"
+                          WHERE type = '%s'
+                          ''' %(self.prefix+'_Roles',role)
+                    result = self.conn.ExecuteSQL(sql)
+                    add_to_table = True
+                    for row in result: add_to_table = False
+                    if add_to_table == True:
+                        #adds role into role table
+                        sql = '''
+                              INSERT INTO "%s" (type)
+                              VALUES ('%s');
+                              ''' %(self.prefix+'_Roles',role)
+                        self.conn.ExecuteSQL(sql)
+                    #gets id of role
+                    sql = '''
+                          SELECT "RoleID"
+                          FROM "%s"
+                          WHERE type = '%s';
+                          ''' %(self.prefix+'_Roles',role)
+                    result = self.conn.ExecuteSQL(sql)
+                    for row in result: role_id = row['RoleID']
+                
+                    #add id to all nodes which have the same type
+                    sql = '''
+                          UPDATE "%s"
+                          SET role_id = '%s'
+                          WHERE role = '%s';
+                          ''' %(self.prefix+'_Nodes',role_id,role)
+                    self.conn.ExecuteSQL(sql)
+                    
+        #at end remove original role column
+        sql = '''
+              ALTER TABLE "%s"
+              DROP COLUMN "%s"
+              ''' %(self.prefix+'_Nodes','role')
+        #self.conn.ExecuteSQL(sql)
+        return True
     def add_functions(self,functions):
         '''
         Adds a new function to the function table for the specified network.
@@ -556,8 +658,31 @@ class read:
         except:
             raise error_class("Could not read %s network. Check contain_atts variable is set correctly." %(self.prefix))
         
-        #check attribute tables exist before trying to retrieve data
+        #add role type to G using role id attribute
+        #need to check for role attribute and if exists, pull types from role table
+        roleid = False
+        for node in G.nodes(data=True):
+            for key in node[1].keys():
+                if key == 'role_id':
+                    #return a dict of node roles
+                    sql = '''
+                          SELECT * FROM "%s"
+                          ''' %(self.prefix+'_Roles')
+                    result = self.conn.ExecuteSQL(sql)
+                    role_dt = {}
+                    for row in result:
+                        role_dt[str(row['RoleID'])] = row['type']
+                    roleid = True
+                    break
+            break
+        
+        #loop through nodes adding role_type att use role_dt dict and roleid att        
+        if roleid == True:
+            for node in G.nodes():
+                G.node[node]['role_type'] = role_dt[str(G.node[node]['role_id'])]
+        
         if attributes != None:
+            #check attribute tables exist before trying to retrieve data
             for key in attributes[0].keys():
                 if attributes[0][key] == True:
                     result = table_sql(self.conn,self.prefix).check_attribute_table_exists(key,True)
@@ -568,12 +693,14 @@ class read:
                     if result == False: print "Table for the '%s' edge attribute does not exist. Cancelling network build request." %(key); exit()
     
             #need to use attributes to get the required data from the database and
+            #adds attributes ang thier functions to G
             function_table = self.prefix + "_Functions"
+            #nodes
             for key in attributes[0].keys():
                 if attributes[0][key] == True:
                     node_table = self.prefix + "_Nodes"
                     att_table = self.prefix + "_Nodes_" + key
-                    #get ndoe data for attribute
+                    #get node data for attribute
                     result = table_sql(self.conn,self.prefix).get_node_data(key,node_table,function_table,att_table)
                     
                     for row in result:
@@ -581,7 +708,7 @@ class read:
                         #add to the networkx instance
                         G.node[row["NodeID"]][key] = row[key]
                         G.node[row["NodeID"]][key + "_function"] = row["function"]
-            
+            #edges
             for key in attributes[1].keys():
                 if attributes[1][key] == True:
                     #get data for attribute

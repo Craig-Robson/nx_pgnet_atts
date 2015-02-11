@@ -56,9 +56,12 @@ if contains_functions == False and contains_atts == True:
         nx_pgnet_av.table_sql(conn,name).update_edge_functionid(attribute,functionid,i)
         
 '''-------------pull network from database with attributes and functions----'''
+print 'pulling network from db'
+#need to re-estacblish connection as it does not pick up the addition of a new column
+conn = ogr.Open("PG:dbname='_new_schema_SB' host='localhost'port='5433' user='postgres' password='aaSD2011'")
+
 G = nx_pgnet_av.read(conn,name).read_from_db(attributes)
 print "Loaded network. Has %s nodes and %s edges." %(G.number_of_nodes(), G.number_of_edges())
-
 print "---------------------------------------"
 
 #contains_atts = write atts from network into database tables
@@ -73,7 +76,7 @@ print "Loaded written network with no attributes. Has %s nodes and %s edges." %(
 
 G = nx_pgnet_av.read(conn,name).read_from_db(attributes)
 print "Loaded written network with attributes. Has %s nodes and %s edges." %(G.number_of_nodes(), G.number_of_edges())
-print G.node[1]
+#print G.node[1]
 functions = nx_pgnet_av.read(conn,name).return_network_functions()
 print "Number of functions for network number %s." %len(functions)
 #update function text and type (set type as none if not changing it)
