@@ -22,7 +22,7 @@ conn.ExecuteSQL(sql)
 #G = nx_pg.read_pg(conn, 'sample_lines','sample_points')
 G = nx_pg.read_pg(conn, 'sample_lines_atts','sample_points_atts')
 #G = nx_pg.read_pg(conn, 'tyne_wear_m_a_b') #no attributes added at this time
-contains_atts = True; contains_functions = False
+contains_atts = False; contains_functions = False
 
 '''-------------add network to db with specified attributes-----------------'''
 #attributes = None
@@ -42,10 +42,11 @@ if contains_functions == False:
 
 '''-------------add attribute values and function ids to nodes and edges----'''
 if contains_atts == False and contains_functions == False:
-    attribute = 'flow' ; att_value_range = [5,25] ; functionid_range = [0,2]
-    nx_pgnet_av.write(conn,name).add_atts_randomly(G,attribute,att_value_range,functionid_range,overwrite=False)
-    attribute = 'capacity' ; att_value_range = [2,56] ; functionid_range = [0,2]
-    nx_pgnet_av.write(conn,name).add_atts_randomly(G,attribute,att_value_range,functionid_range,overwrite=False)
+    #attribute = 'flow' ; att_value_range = [5,25] ; functionid_range = [0,2] ; units = 'Per hour'
+    #nx_pgnet_av.write(conn,name).add_atts_randomly(G,attribute,att_value_range,functionid_range,units,overwrite=False)
+    attribute = 'capacity' ; att_value_range = [2,56] ; functionid_range = [0,2] ; units = 'Per hour'
+    nx_pgnet_av.write(conn,name).add_atts_randomly(G,attribute,att_value_range,functionid_range,units,overwrite=False)
+
 if contains_functions == False and contains_atts == True:
     attribute = 'capacity' ;
     for i in range(1, G.number_of_nodes()+1):
@@ -54,30 +55,28 @@ if contains_functions == False and contains_atts == True:
     for i in range (1, G.number_of_edges()+1):
         functionid = random.randint(0,2)
         nx_pgnet_av.table_sql(conn,name).update_edge_functionid(attribute,functionid,i)
-        
-'''-------------pull network from database with attributes and functions----'''
-print 'pulling network from db'
-#need to re-estacblish connection as it does not pick up the addition of a new column
-conn = ogr.Open("PG:dbname='_new_schema_SB' host='localhost'port='5433' user='postgres' password='aaSD2011'")
 
+'''-------------pull network from database with attributes and functions----'''
+#need to re-establish connection as it does not pick up the addition of a new column
+conn = ogr.Open("PG:dbname='_new_schema_SB' host='localhost'port='5433' user='postgres' password='aaSD2011'")
+print "Reading network from database. Should contain the units attribute."
 G = nx_pgnet_av.read(conn,name).read_from_db(attributes)
 print "Loaded network. Has %s nodes and %s edges." %(G.number_of_nodes(), G.number_of_edges())
+print G.node[1]
 print "---------------------------------------"
-
+print "Writing network back to database."
 #contains_atts = write atts from network into database tables
 result = nx_pgnet_av.write(conn,'test_new_write').write_to_db(G,attributes,contains_atts = True, contains_functions = True )
 if result == False: exit()
-else: print "Written network back to database with attributes saved to tables."
 
 print "---------------------------------------"
 
 G = nx_pgnet_av.read(conn,name).read_from_db(None)
 print "Loaded written network with no attributes. Has %s nodes and %s edges." %(G.number_of_nodes(), G.number_of_edges())
-
+G.node[1]
 G = nx_pgnet_av.read(conn,name).read_from_db(attributes)
 print "Loaded written network with attributes. Has %s nodes and %s edges." %(G.number_of_nodes(), G.number_of_edges())
-#print G.node[1]
-functions = nx_pgnet_av.read(conn,name).return_network_functions()
+print G.node[1]
 print "Number of functions for network number %s." %len(functions)
 #update function text and type (set type as none if not changing it)
 new_function = 'capacity / flow * 2'
