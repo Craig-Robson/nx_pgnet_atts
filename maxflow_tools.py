@@ -58,7 +58,7 @@ def check_for_demand_supply_nodes(G):
     
     return G,supply_nodes, demand_nodes, added_nodes, added_edges 
 
-def get_check_supply_demand_nodes(G,supply_node,demand_node):
+def get_check_supply_demand_nodes(G,supply_nodes,demand_nodes,added_nodes):
     '''
     Identify the node keys for the source and demand nodes in the network.
     '''
@@ -167,6 +167,8 @@ def get_max_flows(G):
     '''
     node_flow_max = {'node':-999,'flow':0}
     edge_flow_max = {'edge':-999,'flow':0}
+    edge_flows, node_flows = get_flow_stats(G)
+    
     for nd in node_flows:
         if node_flows[nd] > node_flow_max['flow']:
             node_flow_max['node']=nd
@@ -197,7 +199,7 @@ def assign_edge_node_flows(G, data):
     
     return G
 
-def replace_nodes(G):
+def convert_topo(G):
     '''
     Converts a network to a format where node capacities can be used in 
     standard flow algorithms. Replaces a node with two nodes, each with a 
@@ -209,14 +211,24 @@ def replace_nodes(G):
     for nd in node_list:
         #add two nodes
         role = G.node[nd]['role']
-        #print G.node[nd].keys()
-        #exit()
+        atts = G.node[nd]
         #new dest node
-        if role == 'demand': G.add_node(G.number_of_nodes()+1,{'id':str(nd)+'A','role':role,'capacity':G.node[nd]['capacity'],'ref_nds':nd})
-        else: G.add_node(G.number_of_nodes()+1,{'role':'transfer','ref_nds':nd})
+        if role == 'demand':
+            d_atts = atts.copy()
+            d_atts['id']=str(nd)+'A';d_atts['role']=role;d_atts['ref_nds']=nd
+            G.add_node(G.number_of_nodes()+1,d_atts)
+            #G.add_node(G.number_of_nodes()+1,{'id':str(nd)+'A','role':role,'capacity':G.node[nd]['capacity'],'ref_nds':nd})
+        else:
+            atts['role']='transfer';atts['ref_nds']=nd
+            G.add_node(G.number_of_nodes()+1,atts)
         #new origin node
-        if role == 'supply': G.add_node(G.number_of_nodes()+1,{'id':str(nd)+'B','role':role,'capacity':G.node[nd]['capacity'],'ref_nds':nd})
-        else: G.add_node(G.number_of_nodes()+1,{'role':'transfer','ref_nds':nd})
+        if role == 'supply':
+            s_atts = atts.copy()
+            s_atts['id']=str(nd)+'B';s_atts['role']=role;s_atts['ref_nds']=nd
+            G.add_node(G.number_of_nodes()+1,s_atts)
+        else: 
+            atts['role']='transfer';atts['ref_nds']=nd
+            G.add_node(G.number_of_nodes()+1,atts)
 
         #add connecting edge
         G.add_edge(G.number_of_nodes()-1,G.number_of_nodes(),{'id':nd,'capacity':G.node[nd]['capacity']})
@@ -229,7 +241,9 @@ def replace_nodes(G):
 
         #assign edges to new destination       
         for eg in in_edges:
-            G.add_edge(eg[0],G.number_of_nodes()-1,{'capacity':G.edge[eg[0]][eg[1]]['capacity'],'ref_nds':nd})
+            atts = G.edge[eg[0]][eg[1]]
+            atts['ref_nds'] = nd
+            G.add_edge(eg[0],G.number_of_nodes()-1,atts)
             G.remove_edge(eg[0],eg[1])
 
         #get edges flowing out of node
@@ -237,7 +251,9 @@ def replace_nodes(G):
 
         #assign edges to new origin
         for eg in out_edges:
-            G.add_edge(G.number_of_nodes(),eg[1],{'capacity':G.edge[eg[0]][eg[1]]['capacity'],'ref_nds':nd})
+            atts = G.edge[eg[0]][eg[1]]
+            atts['ref_nds'] = nd
+            G.add_edge(G.number_of_nodes(),eg[1],atts)
             G.remove_edge(eg[0],eg[1])
     
     for nd in node_list:
@@ -257,13 +273,16 @@ def revert_topo(G):
     number_of_nodes = G.number_of_nodes()
     while i < number_of_nodes:
         #identify the role of the node, override first if secon is supply or demand
-        role = G.node[node_list[i]]['role']
+        atts = G.node[node_list[i]]
         if G.node[node_list[i+1]]['role'] == 'supply' or G.node[node_list[i+1]]['role'] == 'demand':
-            role = G.node[node_list[i+1]]['role']
-        
+            atts['role'] = G.node[node_list[i+1]]['role']
+        #take the highest flow value from the two nodes - therefore we know it will include those flows which finish/start at the node as well as pass through
+        if G.node[node_list[i+1]]['flow'] > atts['flow']:
+            atts['flow'] = G.node[node_list[i+1]]['flow']
+            
         #add new node
-        G.add_node(G.node[node_list[i]]['ref_nds'],{'flow':G.node[node_list[i]]['flow'],'role':role,'capacity':G.edge[node_list[i]][node_list[i+1]]['capacity']})
-
+        G.add_node(G.node[node_list[i]]['ref_nds'],atts)
+        
         #go through all edges and create new ones - first those leading to the node        
         for eg in G.in_edges(node_list[i]):
             atts = G.edge[eg[0]][eg[1]]
@@ -286,56 +305,53 @@ def revert_topo(G):
         
     return G
     
-conn = ogr.Open("PG:dbname='_new_schema_SB' host='localhost'port='5433' user='postgres' password='aaSD2011'")
+def get_max_flow_values(G,use_node_capacities=True):
+    '''
+    This runs a ford-fulkerson maximum flow algrothim over the provided network
+    and assigns the resulting flows to each edge. The flowws for each node are 
+    also calcualted and assigned.
+    '''
+    
+    if use_node_capacities == True:
+        G = convert_topo(G)
+    
+    #check for supply and demand nodes. Needs to be at least one of each.
+    #if more than one need to create a super source/sink(demand) nodes.
+    G,supply_nodes, demand_nodes, added_nodes, added_edges = check_for_demand_supply_nodes(G)
+    
+    #get supply node and demand node
+    supply_nd,demand_nd = get_check_supply_demand_nodes(G,supply_nodes,demand_nodes,added_nodes)
+    
+    #this returns the maximum flow and the flow on each edge by node
+    max_flow, edge_flows = nx.ford_fulkerson(G, supply_nd,demand_nd,'capacity')
+
+    #assign flows to nodes and edges
+    G = assign_edge_node_flows(G, edge_flows)
+
+    #before running any analysis, need to remove the added nodes and edges - the super source/demand if used
+    G = remove_added_nodes_edges(G,added_edges,added_nodes)
+    
+    node_flow_max, edge_flow_max = get_max_flows(G)
+    
+    return G, {'max_flow':max_flow,'max_node_flow':node_flow_max,'max_edge_flow':edge_flow_max}
+
+"""
+###how to call and get values
+conn = ogr.Open("PG:dbname='*****' host='*****' port='*****' user='*****' password='*****'")
 name = 'sample'
 attributes = [{'flow':False, 'capacity':True, 'storage':False, 'resistance':False, 'latency':False},{'flow':False, 'capacity':True, 'length':False, 'resistance':False, 'stacking':False}]
 G = nx_pgnet_av.read(conn,name).read_from_db(attributes)
 
-G = replace_nodes(G)
+G,results = get_max_flow_values(G,True)
 
-#check for supply and demand nodes. Needs to be at least one of each.
-#if more than one need to create a super source/sink(demand) nodes.
-G,supply_nodes, demand_nodes, added_nodes, added_edges = check_for_demand_supply_nodes(G)
-
-#this line may not be needed as above returns possible solution
-supply_nd,demand_nd = get_check_supply_demand_nodes(G,supply_nodes,demand_nodes)
-
-#this returns the maximum flow and the flow on each edge by node
-result = nx.ford_fulkerson(G, supply_nd,demand_nd,'capacity')
-print "Ford fulkerson max flow:",result[0]
-#print "Ford fulkerson edge flows:",result[1]
-print '----------------------'
-
-#assign flows to nodes and edges
-G = assign_edge_node_flows(G, result[1])
-
-#before running any analysis, need to remove the added nodes and edges
-G = remove_added_nodes_edges(G,added_edges,added_nodes)
-
-#find flow in nodes and edges
-edge_flows, node_flows = get_flow_stats(G)
-
-print "Node flow values:", node_flows
-print "Edge flow values:",edge_flows
-
-#get edge and node with max flow
-node_flow_max, edge_flow_max = get_max_flows(G)
-
-print "Node with greatest flow:",node_flow_max        
-print "Edge with greatest flow:",edge_flow_max
-
+print results
+"""              
+"""
 #this allows a network to be converted back to original format
 G = revert_topo(G) 
-
-print G.node[2]
-print G.edge[3][5]
-"""
-print 'Ref nodes (NewID, OriginalID):'
-for nd in G.nodes():
-    print nd,',',G.node[nd]['ref_nds']
-"""
 
 #can then run a cascading failure model over the network where flows are not rerouted
 
 #model methods to be confirmed - read lit to find the best option
 #can use topology based methods, or a flow based method
+"""
