@@ -26,7 +26,7 @@ contains_atts = False; contains_functions = False
 
 '''-------------add network to db with specified attributes-----------------'''
 #attributes = None
-attributes = [{'flow':False, 'capacity':True, 'storage':False, 'resistance':False, 'latency':False},
+attributes = [{'flow':False, 'capacity':True, 'storage':True, 'resistance':False, 'latency':False},
               {'flow':False, 'capacity':True, 'length':False, 'resistance':False, 'stacking':False}]
 result = nx_pgnet_av.write(conn,name).write_to_db(G,attributes, contains_atts, contains_functions)
 if result == False: exit()
@@ -42,8 +42,8 @@ if contains_functions == False:
 
 '''-------------add attribute values and function ids to nodes and edges----'''
 if contains_atts == False and contains_functions == False:
-    #attribute = 'flow' ; att_value_range = [5,25] ; functionid_range = [0,2] ; units = 'Per hour'
-    #nx_pgnet_av.write(conn,name).add_atts_randomly(G,attribute,att_value_range,functionid_range,units,overwrite=False)
+    attribute = 'storage' ; att_value_range = [5,25] ; functionid_range = [0,2] ; units = 'Per hour'
+    nx_pgnet_av.write(conn,name).add_atts_randomly(G,attribute,att_value_range,functionid_range,units,overwrite=False)
     attribute = 'capacity' ; att_value_range = [2,56] ; functionid_range = [0,2] ; units = 'Per hour'
     nx_pgnet_av.write(conn,name).add_atts_randomly(G,attribute,att_value_range,functionid_range,units,overwrite=False)
 
@@ -60,9 +60,11 @@ if contains_functions == False and contains_atts == True:
 #need to re-establish connection as it does not pick up the addition of a new column
 conn = ogr.Open("PG:dbname='_new_schema_SB' host='localhost'port='5433' user='postgres' password='aaSD2011'")
 print "Reading network from database. Should contain the units attribute."
+print attributes
 G = nx_pgnet_av.read(conn,name).read_from_db(attributes)
 print "Loaded network. Has %s nodes and %s edges." %(G.number_of_nodes(), G.number_of_edges())
 print G.node[1]
+print G.node[1].keys()
 print "---------------------------------------"
 print "Writing network back to database."
 #contains_atts = write atts from network into database tables

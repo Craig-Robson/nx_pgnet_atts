@@ -6,7 +6,7 @@ Created on Mon Dec 22 08:37:39 2014
 """
 
 import networkx as nx
-import sys, ogr
+import sys
 sys.path.append('C:/a8243587_DATA/GitRepo/nx_pgnet')
 import nx_pgnet,nx_pg
 import random
@@ -26,13 +26,6 @@ class table_sql:
             print "No connection to databse!"
             exit()
         self.prefix = name
-    
-    def populate_role_table(self,):
-        '''
-        '''
-        sql = ";"
-        
-        return
     
     def create_units_table(self,):
         '''
@@ -154,15 +147,46 @@ class table_sql:
     def update_node_attributes2(self,attribute,att_value,functionid,unitid,nodeid,overwrite):
         '''
         This is used as there is an as yet unidentified issue with the above 
-        method.
+        method (update_node_attributes).
         '''
-        sql = '''
-              UPDATE "%s" 
-              SET "FunctionID" = %s, "%s" = %s, "UnitID" = %s 
-              WHERE "NodeID" = %s
-              ''' %(self.prefix+"_Nodes_"+attribute,functionid,attribute,att_value,unitid,nodeid)
-        result = self.conn.ExecuteSQL(sql)
-        
+        if type(att_value) != tuple:
+            if attribute == 'buffer':
+                sql = '''
+                      UPDATE "%s" 
+                      SET "FunctionID" = %s, %s = %s, "UnitID" = %s 
+                      WHERE "NodeID" = %s
+                      ''' %(self.prefix+"_Nodes_"+attribute,functionid,'storage',att_value,unitid,nodeid)
+                result = self.conn.ExecuteSQL(sql)
+            elif attribute == 'flow':
+                sql = '''
+                      UPDATE "%s" 
+                      SET "FunctionID" = %s, "%s" = %s, "UnitID" = %s 
+                      WHERE "NodeID" = %s
+                      ''' %(self.prefix+"_Nodes_"+attribute,functionid,'flow_capacity',att_value,unitid,nodeid)
+                result = self.conn.ExecuteSQL(sql)
+            else:
+                sql = '''
+                      UPDATE "%s" 
+                      SET "FunctionID" = %s, "%s" = %s, "UnitID" = %s 
+                      WHERE "NodeID" = %s
+                      ''' %(self.prefix+"_Nodes_"+attribute,functionid,attribute,att_value,unitid,nodeid)
+                result = self.conn.ExecuteSQL(sql)
+        elif len(att_value) == 2:
+            if attribute == 'buffer':
+                sql = '''
+                      UPDATE "%s" 
+                      SET "FunctionID" = %s, "%s" = %s, "%s" = %s, "UnitID" = %s 
+                      WHERE "NodeID" = %s
+                      ''' %(self.prefix+"_Nodes_"+attribute,functionid,'storage',att_value[0],'buffer_capacity',att_value[1],unitid,nodeid)
+                result = self.conn.ExecuteSQL(sql)
+            elif attribute == 'flow':
+                if att_value[0] == None:att_value = (0,att_value[1])
+                sql = '''
+                      UPDATE "%s" 
+                      SET "FunctionID" = %s, "%s" = %s, "%s" = %s, "UnitID" = %s 
+                      WHERE "NodeID" = %s
+                      ''' %(self.prefix+"_Nodes_"+attribute,functionid,attribute,att_value[0],'flow_capacity',att_value[1],unitid,nodeid)
+                result = self.conn.ExecuteSQL(sql)
         return result
 
     def update_edge_attributes(self,attribute,att_value,functionid,unitid,edgeid,overwrite):
@@ -171,11 +195,12 @@ class table_sql:
         '''
             
         sql = ("SELECT * FROM np_add_edge_attribute('%s','%s',%s,%s,%s,%s,%s)" %(self.prefix,attribute,att_value,functionid,unitid,edgeid,overwrite))
+        
         result = True
     
         for row in self.conn.ExecuteSQL(sql):
               result = row.np_add_edge_attribute
-        
+    
         try:
             sql = '''
                   UPDATE "%s" 
@@ -187,6 +212,37 @@ class table_sql:
         
         return result
     
+    def update_edge_attributes2(self,attribute,att_value,functionid,unitid,nodeid,overwrite):
+        '''
+        This is used as there is an as yet unidentified issue with the above 
+        method (update_node_attributes).
+        '''
+        if type(att_value) != tuple:
+            if attribute == 'flow':
+                sql = '''
+                      UPDATE "%s" 
+                      SET "FunctionID" = %s, "%s" = %s, "UnitID" = %s 
+                      WHERE "EdgeID" = %s
+                      ''' %(self.prefix+"_Edges_"+attribute,functionid,'flow_capacity',att_value,unitid,nodeid)
+                result = self.conn.ExecuteSQL(sql)
+            else:
+                sql = '''
+                      UPDATE "%s" 
+                      SET "FunctionID" = %s, "%s" = %s, "UnitID" = %s 
+                      WHERE "EdgeID" = %s
+                      ''' %(self.prefix+"_Edges_"+attribute,functionid,attribute,att_value,unitid,nodeid)
+                result = self.conn.ExecuteSQL(sql)
+        elif len(att_value) == 2:
+            if attribute == 'flow':
+                if att_value[0] == None:att_value = (0,att_value[1])
+                sql = '''
+                      UPDATE "%s" 
+                      SET "FunctionID" = %s, "%s" = %s, "%s" = %s, "UnitID" = %s 
+                      WHERE "EdgeID" = %s
+                      ''' %(self.prefix+"_Edges_"+attribute,functionid,attribute,att_value[0],'flow_capacity',att_value[1],unitid,nodeid)
+                result = self.conn.ExecuteSQL(sql)
+        return result
+        
     def update_function(self,functionid,function_text,function_type):
         '''
         '''
@@ -257,10 +313,33 @@ class table_sql:
         '''
         Returns a list of data with each entry being the attributes for a node.
         '''
-        
-        sql = 'SELECT node_table.*, snc.%s, snc.function, snc."UnitID" FROM "%s" AS node_table JOIN (SELECT * FROM "%s" AS function_table JOIN "%s" snc ON function_table."FunctionID" = snc."FunctionID") AS snc ON node_table."NodeID" = snc."NodeID"' %(key,node_table,function_table,att_table)
-        result = self.conn.ExecuteSQL(sql)
-        
+        if key == 'buffer':
+            sql = '''SELECT node_table.*, snc.storage, snc.buffer_capacity,snc.function, snc."UnitID" 
+                     FROM "%s" AS node_table 
+                     JOIN (SELECT * 
+                           FROM "%s" AS function_table 
+                           JOIN "%s" snc 
+                           ON function_table."FunctionID" = snc."FunctionID") AS snc 
+                     ON node_table."NodeID" = snc."NodeID"''' %(node_table,function_table,att_table)
+            result = self.conn.ExecuteSQL(sql)
+        elif key == 'flow':
+            sql = '''SELECT node_table.*, snc.flow, snc.flow_capacity,snc.function, snc."UnitID" 
+                     FROM "%s" AS node_table 
+                     JOIN (SELECT * 
+                           FROM "%s" AS function_table 
+                           JOIN "%s" snc 
+                           ON function_table."FunctionID" = snc."FunctionID") AS snc 
+                     ON node_table."NodeID" = snc."NodeID"''' %(node_table,function_table,att_table)
+            result = self.conn.ExecuteSQL(sql)
+        else:
+            sql = '''SELECT node_table.*, snc.%s, snc.function, snc."UnitID" 
+                     FROM "%s" AS node_table 
+                     JOIN (SELECT * 
+                           FROM "%s" AS function_table 
+                           JOIN "%s" snc 
+                           ON function_table."FunctionID" = snc."FunctionID") AS snc 
+                     ON node_table."NodeID" = snc."NodeID"''' %(key,node_table,function_table,att_table)
+            result = self.conn.ExecuteSQL(sql)
         return result
         
     def get_edge_data(self,key,edge_table,function_table,att_table):
@@ -396,14 +475,17 @@ class write:
             
         self.prefix = prefix
             
-    def write_to_db(self,G,attributes,contains_atts,contains_functions):
+    def write_to_db(self,G,attributes,contains_atts,contains_functions,overwrite,srid,directed,multigraph):
         '''
         Writes a networkx instance of a network to a postgres/postgis network 
         database schema. Uses the nx_pgnet library for the mian functionality, 
         then facilitates the building of the extra tables for the node and egde 
         attributes and relevant functions.
         '''
-        
+        try:
+            print 'before contains atts code:',G.node[1].keys()
+        except:
+            pass
         #check here for attribute headings being in network
         if contains_atts == False:
             #if att columns exist in the network rename columns (appends'_1')
@@ -416,12 +498,15 @@ class write:
                     print "Renaming column.",key
                     table_sql(self.conn,self.prefix).rename_edge_column(key) 
         
-        
-        #write network to database
-        nx_pgnet.write(self.conn).pgnet(G, self.prefix, 27700, overwrite=True, directed = False, multigraph = False)
-        #pull back so we have edge id's which might be needed later
-        G = nx_pgnet.read(self.conn).pgnet(self.prefix) #this is causing issues with attributes - not 100% why
-        #print G.node[1]
+        Gwrite = G.copy()
+        #write network to database -this is where it goes wrong. It writes out 
+        #to the database all atts into the nodes table, but as the connection
+        #is not refreshed, returns on read those values which were in the node 
+        #table beforehand. Same applies to edges.
+        nx_pgnet.write(self.conn).pgnet(Gwrite, self.prefix, srid, overwrite, directed, multigraph)
+        Gwrite = None
+        #pull back so we have edge id's which are easier to work with
+        #G = nx_pgnet.read(self.conn).pgnet(self.prefix) #this is causing issues with attributes - not 100% why
         
         #create anscilary tables
         table_sql(self.conn,self.prefix).create_units_table()
@@ -439,7 +524,6 @@ class write:
                 
                 #if attribute is set as True
                 if attributes[0][key] == True:
-                    
                     #create attribute table with all nodes within
                     result = table_sql(self.conn,self.prefix).create_node_attribute_table(key)
                     if result <> 1: raise error_class("Could not create %s attribute table." %(key))
@@ -455,7 +539,6 @@ class write:
                     if result <> 1: raise error_class ("Could not create %s attribute table." %(key))
                     
             if contains_atts == False:
-                #pass
                 #if att columns exist in the network rename columns
                 for key in attributes[0].keys():
                     if attributes[0][key] == True: table_sql(self.conn,self.prefix).rename_node_column(key)                    
@@ -483,7 +566,10 @@ class write:
                         for nd in G.nodes():
                             #check attribute available for node
                             try:
-                                att_value = G.node[nd][key]
+                                if key == 'buffer':
+                                    att_value = G.node[nd]['storage']
+                                else:
+                                    att_value = G.node[nd][key]
                             except:
                                 raise error_class("Warning! At least one of the nodes does not have a specified attribute, %s, attached to it. Is the contains_atts variable set correctly?" %(key))
                             #check attribute function available for node
@@ -517,8 +603,10 @@ class write:
                         
                         for nd in G.nodes():
                             
-                            #get the attribute value  
-                            att_value = G.node[nd][key]
+                            #get the attribute value
+                            if key == 'buffer': att_value = G.node[nd]['storage'],G.node[nd]['buffer_capacity']
+                            elif key == 'flow': att_value = G.node[nd]['flow'],G.node[nd]['flow_capacity']
+                            else: att_value = G.node[nd][key]
 
                             #get unit
                             unit = G.node[nd][key+'_unit']
@@ -579,7 +667,6 @@ class write:
                                 if att_value != False and function != False and functionid != '':
                                     #result = table_sql(self.conn,self.prefix).update_node_attributes(key,att_value,functionid,nd,overwrite=False)
                                     result = table_sql(self.conn,self.prefix).update_node_attributes2(key,att_value,functionid,unit_id,nd,overwrite=False)
-
                                     if result == False:
                                         raise error_class("Could not update node attributes for node %s." %(nd))
                                     else:
@@ -598,7 +685,10 @@ class write:
                             edge = G.edge[edg[0]][edg[1]]
        
                             #get attribute value
-                            att_value = edge[key]
+                            if key == 'flow':
+                                att_value = edge[key],edge['flow_capacity']
+                            else:
+                                att_value = edge[key]
                             
                             #get unit
                             unit = G.node[nd][key+'_unit']
@@ -655,7 +745,7 @@ class write:
                                         next_functionid += 1
                                 if att_value != False and functionid != '':                            
                                     #updates the edge attribute table - uses edge id and function id
-                                    result = table_sql(self.conn,self.prefix).update_edge_attributes(key,att_value,functionid,unit_id,edge["EdgeID"],overwrite=False)
+                                    result = table_sql(self.conn,self.prefix).update_edge_attributes2(key,att_value,functionid,unit_id,edge["EdgeID"],overwrite=False)
                             
                             #if no function exists
                             else:  
@@ -756,60 +846,66 @@ class write:
 
         return True
         
-    def add_atts_randomly(self,G,attribute,att_value_range,functionid_range,units,overwrite):
+    def add_atts_randomly(self,G,attribute,nodes,edges,att_value_range,functionid_range,units,overwrite):
         '''
+        Adds attributes to nodes and edges given an attribute name, a range for
+        random values, function ids and a unit string.
         '''
-        #loop through all the nodes
-        for i in range(1, G.number_of_nodes()+1):
-            #get random function id
-            functionid = random.randint(functionid_range[0],functionid_range[1])
-            #get random attribute value
-            att_value = random.randint(att_value_range[0],att_value_range[1])
-            #get unit id. if not in unit table, add
-            unit_id = table_sql(self.conn,self.prefix).get_unitid(units)
-            
-            #assign random values to node in appropriate attribute table
-            result = table_sql(self.conn,self.prefix).update_node_attributes(attribute,att_value,functionid,unit_id,i,overwrite=False)
-            #error reporting
-            if result == False:
-                functionids = table_sql(self.conn,self.prefix).get_function_ids(self.prefix+"_Functions")
-                if functionids == False:
-                    raise error_class('Error!. Could not get function ids. %s_Functions table does not exist. Check "contains_functions" variable is set correctly. Set as False if network does not contain all attribute functions.'%(self.prefix))
-                for _id in functionids:
-                    if functionid == _id:
-                        functionid_exists = True
-                        break
-                if functionid_exists == False:
-                    raise error_class('FunctionID (%s) not recognised. Check function is in %s_Functions table.' %(functionid,self.prefix))
-                else:
-                    raise error_class('Unknown error! Function with an id of %s exists in %s_Functions table but could not be written in the node table.' %(functionid,self.prefix))
-                raise error_class("SHOULD NOT BE DOING THIS")
-                #sql here to add the function id manually
-                #sql = 'UPDATE "%s" SET "FunctionID" = %s, "%s" = %s WHERE "NodeID" = %s' %(self.prefix+"_Nodes_"+attribute,functionid,attribute,att_value,i)
-                #self.conn.ExecuteSQL(sql)
+        if nodes == True:
+            #loop through all the nodes
+            for i in range(1, G.number_of_nodes()+1):
+                #get random function id
+                functionid = random.randint(functionid_range[0],functionid_range[1])
+                #get random attribute value
+                att_value = random.randint(att_value_range[0],att_value_range[1])
+                #get unit id. if not in unit table, add
+                unit_id = table_sql(self.conn,self.prefix).get_unitid(units)
+                
+                #assign random values to node in appropriate attribute table
+                result = table_sql(self.conn,self.prefix).update_node_attributes2(attribute,att_value,functionid,unit_id,i,overwrite=False)
+                
+                #error reporting
+                if result == False:
+                    functionids = table_sql(self.conn,self.prefix).get_function_ids(self.prefix+"_Functions")
+                    if functionids == False:
+                        raise error_class('Error!. Could not get function ids. Check %s_Functions table exists and the specified function with ids are in the table. Also, check "contains_functions" variable is set correctly - False if network does not contain all attribute functions.'%(self.prefix))
+                    for _id in functionids:
+                        if functionid == _id:
+                            functionid_exists = True
+                            break
+                    if functionid_exists == False:
+                        raise error_class('FunctionID (%s) not recognised. Check function is in %s_Functions table.' %(functionid,self.prefix))
+                    else:
+                        raise error_class('Unknown error! Function with an id of %s exists in %s_Functions table but could not be written in the node table.' %(functionid,self.prefix))
+                    raise error_class("SHOULD NOT BE DOING THIS")
+                    #sql here to add the function id manually
+                    #sql = 'UPDATE "%s" SET "FunctionID" = %s, "%s" = %s WHERE "NodeID" = %s' %(self.prefix+"_Nodes_"+attribute,functionid,attribute,att_value,i)
+                    #self.conn.ExecuteSQL(sql)
         
-        #loop through all edges
-        for i in range (1, G.number_of_edges()+1):
-            #get random function id
-            functionid = random.randint(functionid_range[0],functionid_range[1])
-            #get random attribute value
-            att_value = random.randint(att_value_range[0],att_value_range[1])
-            #get unit id. if not in unit table, add
-            unit_id = table_sql(self.conn,self.prefix).get_unitid(units)
-            
-            #assign random values to edge in appropriate attribute table
-            result = table_sql(self.conn,self.prefix).update_edge_attributes(attribute,att_value,functionid,unit_id,i,overwrite=False)
-            #error reporting
-            if result == False: 
-                functionids = table_sql(self.conn,self.prefix).get_function_ids(self.prefix+"_Functions")
-                for _id in functionids:
-                    if functionid == _id:
-                        functionid_exists = True
-                        break
-                if functionid_exists == False:
-                    raise error_class('FunctionID (%s) not recognised. Check function is in %s_Functions table.' %(functionid,self.prefix))
-                else:
-                    raise error_class('Unknown error! Function with an id of %s exists in %s_Functions table but could not be written in the edge table.' %(functionid,self.prefix))
+        if edges == True:
+            #loop through all edges
+            for i in range (1, G.number_of_edges()+1):
+                #get random function id
+                functionid = random.randint(functionid_range[0],functionid_range[1])
+                #get random attribute value
+                att_value = random.randint(att_value_range[0],att_value_range[1])
+                #get unit id. if not in unit table, add
+                unit_id = table_sql(self.conn,self.prefix).get_unitid(units)
+                
+                #assign random values to edge in appropriate attribute table
+                result = table_sql(self.conn,self.prefix).update_edge_attributes(attribute,att_value,functionid,unit_id,i,overwrite=False)
+                
+                #error reporting
+                if result == False: 
+                    functionids = table_sql(self.conn,self.prefix).get_function_ids(self.prefix+"_Functions")
+                    for _id in functionids:
+                        if functionid == _id:
+                            functionid_exists = True
+                            break
+                    if functionid_exists == False:
+                        raise error_class('FunctionID (%s) not recognised. Check function is in %s_Functions table.' %(functionid,self.prefix))
+                    else:
+                        raise error_class('Unknown error! Function with an id of %s exists in %s_Functions table but could not be written in the edge table.' %(functionid,self.prefix))
     
         
 class read:
@@ -882,7 +978,11 @@ class read:
                     for row in result:
                         #using the node pk add to the attributes of the nodes
                         #add to the networkx instance
-                        G.node[row["NodeID"]][key] = row[key]
+                        if key == 'buffer':
+                            G.node[row["NodeID"]]['storage'] = row['storage']
+                            G.node[row["NodeID"]]['buffer_capacity'] = row['buffer_capacity']
+                        else:
+                            G.node[row["NodeID"]][key] = row[key]
                         G.node[row["NodeID"]][key + "_function"] = row["function"]
                         G.node[row["NodeID"]][key + "_unit"] = unit_dt[str(row["UnitID"])]
                         

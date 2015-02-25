@@ -30,8 +30,8 @@ import random as r
 import sys, ogr
 sys.path.append('C:/a8243587_DATA/GitRepo/nx_pgnet')
 import nx_pg
-sys.path.append('C:/a8243587_DATA/work_package_two')
-import nx_pgnet_attribute_addon as nx_pgnet_av
+sys.path.append('C:/a8243587_DATA/GitRepo/nx_pgnet_atts')
+import nx_pgnet_atts as nx_pgnet_atts
 
 def check_for_demand_supply_nodes(G):
     '''
@@ -46,14 +46,14 @@ def check_for_demand_supply_nodes(G):
         exit()
     elif len(supply_nodes) > 1:
         #if more than one supply node create a super node with teh edge capacity being equal to teh capacity of the supply node
-        print "Need to create a supper supply node as %s supply nodes found."
+        print "Need to create a super supply node as %s supply nodes found." %(len(supply_nodes))
         G,added_edges,added_nodes = create_supersupply_node(G, supply_nodes,added_edges,added_nodes)
         
     if len(demand_nodes) == 0:
         print "Error. No demand nodes nominated."
         exit()
     elif len(demand_nodes) > 1:
-        print "Need to create a supper demand node as %s demand nodes found."
+        print "Need to create a super demand node as %s demand nodes found." %(len(demand_nodes))
         G,added_edges,added_nodes = create_superdemand_node(G,supply_nodes,added_edges,added_nodes)
     
     return G,supply_nodes, demand_nodes, added_nodes, added_edges 
@@ -334,24 +334,3 @@ def get_max_flow_values(G,use_node_capacities=True):
     node_flow_max, edge_flow_max = get_max_flows(G)
     
     return G, {'max_flow':max_flow,'max_node_flow':node_flow_max,'max_edge_flow':edge_flow_max}
-
-"""
-###how to call and get values
-conn = ogr.Open("PG:dbname='*****' host='*****' port='*****' user='*****' password='*****'")
-name = 'sample'
-attributes = [{'flow':False, 'capacity':True, 'storage':False, 'resistance':False, 'latency':False},{'flow':False, 'capacity':True, 'length':False, 'resistance':False, 'stacking':False}]
-G = nx_pgnet_av.read(conn,name).read_from_db(attributes)
-
-G,results = get_max_flow_values(G,True)
-
-print results
-"""              
-"""
-#this allows a network to be converted back to original format
-G = revert_topo(G) 
-
-#can then run a cascading failure model over the network where flows are not rerouted
-
-#model methods to be confirmed - read lit to find the best option
-#can use topology based methods, or a flow based method
-"""
