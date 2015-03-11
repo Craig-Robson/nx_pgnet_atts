@@ -305,10 +305,10 @@ def revert_topo(G):
         
     return G
     
-def get_max_flow_values(G,use_node_capacities=True):
+def get_max_flow_values(G,use_node_capacities=True,use_node_demands=False):
     '''
     This runs a ford-fulkerson maximum flow algrothim over the provided network
-    and assigns the resulting flows to each edge. The flowws for each node are 
+    and assigns the resulting flows to each edge. The flows for each node are 
     also calcualted and assigned.
     '''
     
@@ -322,8 +322,16 @@ def get_max_flow_values(G,use_node_capacities=True):
     #get supply node and demand node
     supply_nd,demand_nd = get_check_supply_demand_nodes(G,supply_nodes,demand_nodes,added_nodes)
     
-    #this returns the maximum flow and the flow on each edge by node
-    max_flow, edge_flows = nx.ford_fulkerson(G, supply_nd,demand_nd,'capacity')
+    if use_node_capacities == True and use_node_demands == False:
+        #this returns the maximum flow and the flow on each edge by node
+        max_flow, edge_flows = nx.ford_fulkerson(G, supply_nd,demand_nd,'capacity')
+    elif use_node_capacities == True and use_node_demands == True:
+        #returns the flow on each edge given capacities and demands       
+        #the sum of the demand needs to equal the sum of the supply (indicated by a negative demand value)
+        edge_flows = nx.min_cost_flow(G,'demand','capacity','weight')
+    elif use_node_capacities == False and use_node_demands == True:
+        #returns the flow on each edge given demands (capacities should be set at 9999999 (a very high number))
+        edge_flows = nx.min_cost_flow(G,'demand','capacity','weight')
 
     #assign flows to nodes and edges
     G = assign_edge_node_flows(G, edge_flows)

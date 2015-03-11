@@ -14,7 +14,7 @@ import nx_pgnet_atts as nx_pgnet_av #read and write methods to db
 '''-------------pull network from database and create networkx instance-----'''
 name = "sample"
 #name = "tyne_wear_m_a_b"
-conn = ogr.Open("PG:dbname='_new_schema_SB' host='localhost'port='5433' user='postgres' password='aaSD2011'")
+conn = ogr.Open("PG:dbname='_new_schema' host='localhost'port='5433' user='postgres' password='aaSD2011'")
 sql = ("SELECT np_delete_all_tables('%s');" %(name))
 conn.ExecuteSQL(sql)
 
@@ -28,7 +28,8 @@ contains_atts = False; contains_functions = False
 #attributes = None
 attributes = [{'flow':False, 'capacity':True, 'storage':True, 'resistance':False, 'latency':False},
               {'flow':False, 'capacity':True, 'length':False, 'resistance':False, 'stacking':False}]
-result = nx_pgnet_av.write(conn,name).write_to_db(G,attributes, contains_atts, contains_functions)
+result = nx_pgnet_av.write(conn,name).write_to_db(G,attributes, contains_atts, contains_functions,True,27700,True,False)
+
 if result == False: exit()
 else: print "Network added."
 
@@ -43,9 +44,9 @@ if contains_functions == False:
 '''-------------add attribute values and function ids to nodes and edges----'''
 if contains_atts == False and contains_functions == False:
     attribute = 'storage' ; att_value_range = [5,25] ; functionid_range = [0,2] ; units = 'Per hour'
-    nx_pgnet_av.write(conn,name).add_atts_randomly(G,attribute,att_value_range,functionid_range,units,overwrite=False)
+    nx_pgnet_av.write(conn,name).add_atts_randomly(G,attribute,True,False,att_value_range,functionid_range,units,overwrite=False)
     attribute = 'capacity' ; att_value_range = [2,56] ; functionid_range = [0,2] ; units = 'Per hour'
-    nx_pgnet_av.write(conn,name).add_atts_randomly(G,attribute,att_value_range,functionid_range,units,overwrite=False)
+    nx_pgnet_av.write(conn,name).add_atts_randomly(G,attribute,True,True,att_value_range,functionid_range,units,overwrite=False)
 
 if contains_functions == False and contains_atts == True:
     attribute = 'capacity' ;
@@ -58,7 +59,7 @@ if contains_functions == False and contains_atts == True:
 
 '''-------------pull network from database with attributes and functions----'''
 #need to re-establish connection as it does not pick up the addition of a new column
-conn = ogr.Open("PG:dbname='_new_schema_SB' host='localhost'port='5433' user='postgres' password='aaSD2011'")
+conn = ogr.Open("PG:dbname='_new_schema' host='localhost'port='5433' user='postgres' password='aaSD2011'")
 print "Reading network from database. Should contain the units attribute."
 print attributes
 G = nx_pgnet_av.read(conn,name).read_from_db(attributes)
@@ -67,8 +68,9 @@ print G.node[1]
 print G.node[1].keys()
 print "---------------------------------------"
 print "Writing network back to database."
-#contains_atts = write atts from network into database tables
-result = nx_pgnet_av.write(conn,'test_new_write').write_to_db(G,attributes,contains_atts = True, contains_functions = True )
+#contains_atts = write atts from network into database tables (G,atts,contains_atts,contains_funcs,overwrite,srid,directed,multigraph)
+result = nx_pgnet_av.write(conn,'test_new_write').write_to_db(G,attributes,True,True, True, 27700, True, False )
+
 if result == False: exit()
 
 print "---------------------------------------"
