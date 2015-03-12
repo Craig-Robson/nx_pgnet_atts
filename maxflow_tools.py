@@ -32,6 +32,7 @@ sys.path.append('C:/a8243587_DATA/GitRepo/nx_pgnet')
 import nx_pg
 sys.path.append('C:/a8243587_DATA/GitRepo/nx_pgnet_atts')
 import nx_pgnet_atts as nx_pgnet_atts
+import error_classes
 
 def check_for_demand_supply_nodes(G):
     '''
@@ -103,15 +104,15 @@ def create_supersupply_node(G,supply_nodes,added_edges,added_nodes):
     for nd in supply_nodes:
         cap_sum = 0
         for eg in G.out_edges(nd):
-            cap_sum += G.edge[eg[0]][eg[1]]['capacity']
-        G.add_edge('ssupply',nd,{'capacity':cap_sum})
+            cap_sum += G.edge[eg[0]][eg[1]]['flow_capacity']
+        G.add_edge('ssupply',nd,{'flow_capacity':cap_sum})
         added_edges['supply'].append(('ssupply',nd))
     
     #sum capacity of edges out of super supply node to get capacity
     cap_sum = 0
     for eg in G.out_edges('ssupply'):
-        cap_sum += G.edge[eg[0]][eg[1]]['capacity']
-    G.node['ssupply']['capacity'] = cap_sum
+        cap_sum += G.edge[eg[0]][eg[1]]['flow_capacity']
+    G.node['ssupply']['flow_capacity'] = cap_sum
     return G,added_edges,added_nodes
 
 def create_superdemand_node(G,demand_nodes,added_edges,added_nodes):
@@ -124,15 +125,15 @@ def create_superdemand_node(G,demand_nodes,added_edges,added_nodes):
     for nd in demand_nodes:
         cap_sum = 0
         for eg in G.in_edges(nd):
-            cap_sum += G.edge[eg[0]][eg[1]]['capacity']
-        G.add_edge(nd,'sdemand',{'capacity':cap_sum})    
+            cap_sum += G.edge[eg[0]][eg[1]]['flow_capacity']
+        G.add_edge(nd,'sdemand',{'flow_capacity':cap_sum})    
         added_edges['demand'].append((nd,'sdemand'))
 
     #sum capacity of edges into super demand node to get capacity
     cap_sum = 0
     for eg in G.in_edges('sdemand'):
-        cap_sum += G.edge[eg[0]][eg[1]]['capacity']
-    G.node['sdemand']['capacity'] = cap_sum
+        cap_sum += G.edge[eg[0]][eg[1]]['flow_capacity']
+    G.node['sdemand']['flow_capacity'] = cap_sum
     
     return G,added_edges,added_nodes
 
@@ -168,7 +169,8 @@ def get_max_flows(G):
     node_flow_max = {'node':-999,'flow':0}
     edge_flow_max = {'edge':-999,'flow':0}
     edge_flows, node_flows = get_flow_stats(G)
-    
+    print edge_flows
+    print node_flows
     for nd in node_flows:
         if node_flows[nd] > node_flow_max['flow']:
             node_flow_max['node']=nd
@@ -209,9 +211,11 @@ def convert_topo(G):
     '''
     node_list = G.nodes()
     for nd in node_list:
+        print 'looking at node:', nd
         #add two nodes
         role = G.node[nd]['role']
         atts = G.node[nd]
+        print 'node has a role of:',role
         #new dest node
         if role == 'demand':
             d_atts = atts.copy()
@@ -231,7 +235,7 @@ def convert_topo(G):
             G.add_node(G.number_of_nodes()+1,atts)
 
         #add connecting edge
-        G.add_edge(G.number_of_nodes()-1,G.number_of_nodes(),{'id':nd,'capacity':G.node[nd]['capacity']})
+        G.add_edge(G.number_of_nodes()-1,G.number_of_nodes(),{'id':nd,'flow_capacity':G.node[nd]['flow_capacity']})
 
         #get edges flowing into node
         in_edges = []
@@ -266,7 +270,7 @@ def revert_topo(G):
     '''
     Allows a network which has been converted to handle node capacities to be 
     converted back to a standard topological network. Copies attributes across
-    and handles attribute conflicts (well should do!).
+    and handles attribute conflicts.
     '''
     i = 0
     node_list = G.nodes()
@@ -311,9 +315,15 @@ def get_max_flow_values(G,use_node_capacities=True,use_node_demands=False):
     and assigns the resulting flows to each edge. The flows for each node are 
     also calcualted and assigned.
     '''
+    print G.edges()
+    #print G.edges()
+    
     
     if use_node_capacities == True:
         G = convert_topo(G)
+        
+    print G.edges()
+    exit()
     
     #check for supply and demand nodes. Needs to be at least one of each.
     #if more than one need to create a super source/sink(demand) nodes.
@@ -324,14 +334,20 @@ def get_max_flow_values(G,use_node_capacities=True,use_node_demands=False):
     
     if use_node_capacities == True and use_node_demands == False:
         #this returns the maximum flow and the flow on each edge by node
-        max_flow, edge_flows = nx.ford_fulkerson(G, supply_nd,demand_nd,'capacity')
+        #first check a path is possible - ford-fulkerson would just return 0 otherwise
+        path = nx.has_path(G,supply_nd,demand_nd)
+        if path == False:
+            raise error_classes.GeneralError('No path exists between the supply node (node %s) and the demand node (node %s).' %(supply_nd,demand_nd))
+
+        max_flow, edge_flows = nx.ford_fulkerson(G, supply_nd,demand_nd,'flow_capacity')
+        
     elif use_node_capacities == True and use_node_demands == True:
         #returns the flow on each edge given capacities and demands       
         #the sum of the demand needs to equal the sum of the supply (indicated by a negative demand value)
-        edge_flows = nx.min_cost_flow(G,'demand','capacity','weight')
+        edge_flows = nx.min_cost_flow(G,'demand','flow_capacity','weight')
     elif use_node_capacities == False and use_node_demands == True:
         #returns the flow on each edge given demands (capacities should be set at 9999999 (a very high number))
-        edge_flows = nx.min_cost_flow(G,'demand','capacity','weight')
+        edge_flows = nx.min_cost_flow(G,'demand','flow_capacity','weight')
 
     #assign flows to nodes and edges
     G = assign_edge_node_flows(G, edge_flows)

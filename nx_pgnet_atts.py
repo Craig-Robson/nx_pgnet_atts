@@ -10,7 +10,7 @@ import sys
 sys.path.append('C:/a8243587_DATA/GitRepo/nx_pgnet')
 import nx_pgnet,nx_pg
 import random
-
+import error_classes
 
 
 class table_sql:
@@ -471,7 +471,7 @@ class write:
         '''
         self.conn = db_conn
         if self.conn == None:
-            raise error_class('No connection to database!')
+            raise error_classes.GeneralError('No connection to database!')
             
         self.prefix = prefix
             
@@ -504,6 +504,15 @@ class write:
         #is not refreshed, returns on read those values which were in the node 
         #table beforehand. Same applies to edges.
         nx_pgnet.write(self.conn).pgnet(Gwrite, self.prefix, srid, overwrite, directed, multigraph)
+        print G.nodes()
+        print G.edges()
+        exit()
+        print 'issue is that nodes are being reassigned an id which is different and the edges are not being given this id, thus creating a different network.'
+        for nd in G.nodes():
+            print G.node[nd]['id']
+            for eg in G.edges():
+                print G.edge[eg[0]][eg[1]]
+        exit()
         Gwrite = None
         #pull back so we have edge id's which are easier to work with
         #G = nx_pgnet.read(self.conn).pgnet(self.prefix) #this is causing issues with attributes - not 100% why
@@ -526,7 +535,7 @@ class write:
                 if attributes[0][key] == True:
                     #create attribute table with all nodes within
                     result = table_sql(self.conn,self.prefix).create_node_attribute_table(key)
-                    if result <> 1: raise error_class("Could not create %s attribute table." %(key))
+                    if result <> 1: raise error_classes.GeneralError("Could not create %s attribute table." %(key))
                     
             #create attribute tables for edges
             for key in attributes[1].keys():
@@ -536,7 +545,7 @@ class write:
 
                     #create attribute table with all edges within
                     result = table_sql(self.conn,self.prefix).create_edge_attribute_table(key)
-                    if result <> 1: raise error_class ("Could not create %s attribute table." %(key))
+                    if result <> 1: raise error_classes.GeneralError("Could not create %s attribute table." %(key))
                     
             if contains_atts == False:
                 #if att columns exist in the network rename columns
@@ -571,13 +580,13 @@ class write:
                                 else:
                                     att_value = G.node[nd][key]
                             except:
-                                raise error_class("Warning! At least one of the nodes does not have a specified attribute, %s, attached to it. Is the contains_atts variable set correctly?" %(key))
+                                raise error_classes.GeneralError("Warning! At least one of the nodes does not have a specified attribute, %s, attached to it. Is the contains_atts variable set correctly?" %(key))
                             #check attribute function available for node
                             if contains_functions == True:
                                 try:
                                     function = G.node[nd][key+"_function"]
                                 except:
-                                    raise error_class("Warning! At least one of the nodes does not have a specified attribute, %s, attached to it. Is the contains_functions variable set correctly?" %(key+"_function"))
+                                    raise error_classes.GeneralError("Warning! At least one of the nodes does not have a specified attribute, %s, attached to it. Is the contains_functions variable set correctly?" %(key+"_function"))
                 
                 for key in attributes[1].keys():
                     if attributes[1][key] == True:
@@ -587,13 +596,13 @@ class write:
                             try:
                                 att_value = edge[key]
                             except:
-                                raise error_class("Warning! At least one of the edges does not have a specified attribute, %s, attached to it." %(key))
+                                raise error_classes.GeneralError("Warning! At least one of the edges does not have a specified attribute, %s, attached to it." %(key))
                             #check attribute function in edge
                             if contains_functions == True:
                                 try:
                                     function = edge[key+"_function"]
                                 except:
-                                    raise error_class("Warning! At least one of the edges does not have a specified attribute, %s, attached to it." %(key+"_function"))
+                                    raise error_classes.GeneralError("Warning! At least one of the edges does not have a specified attribute, %s, attached to it." %(key+"_function"))
                                 
                 #check if node attribute exists and copy to table if so
                 for key in attributes[0].keys():
@@ -657,8 +666,7 @@ class write:
                                     #add function to function table
                                     result = self.add_functions([[function_type,function,next_functionid]])
                                     if result == False:
-                                        raise error_class("Failed to add function with id %s!" %(next_functionid))
-                                        #print "Failed to add function with id %s!" %(next_functionid)
+                                        raise error_classes.DatabaseError("Failed to add function with id %s!" %(next_functionid))
                                     else:
                                         functionid = next_functionid
                                         next_functionid += 1
@@ -668,11 +676,11 @@ class write:
                                     #result = table_sql(self.conn,self.prefix).update_node_attributes(key,att_value,functionid,nd,overwrite=False)
                                     result = table_sql(self.conn,self.prefix).update_node_attributes2(key,att_value,functionid,unit_id,nd,overwrite=False)
                                     if result == False:
-                                        raise error_class("Could not update node attributes for node %s." %(nd))
+                                        raise error_classes.DatabaseError("Could not update node attributes for node %s." %(nd))
                                     else:
                                         pass
                                 else:
-                                    raise error_class("Error! Attribute value variable or function variable is false or function id variable is blank.")
+                                    raise error_classes.DatabaseError("Error! Attribute value variable or function variable is false or function id variable is blank.")
                             else:
                                 #don't add a function id
                                 pass
@@ -739,7 +747,7 @@ class write:
                                     #add function to table
                                     result = self.add_functions((function_type,function,next_functionid))
                                     if result == False:
-                                        raise error_class("Failed to add function with id %s!" %(next_functionid))
+                                        raise error_classes.DatabaseError("Failed to add function with id %s!" %(next_functionid))
                                     else:
                                         functionid = next_functionid
                                         next_functionid += 1
@@ -868,16 +876,16 @@ class write:
                 if result == False:
                     functionids = table_sql(self.conn,self.prefix).get_function_ids(self.prefix+"_Functions")
                     if functionids == False:
-                        raise error_class('Error!. Could not get function ids. Check %s_Functions table exists and the specified function with ids are in the table. Also, check "contains_functions" variable is set correctly - False if network does not contain all attribute functions.'%(self.prefix))
+                        raise error_classes.GeneralError('Error!. Could not get function ids. Check %s_Functions table exists and the specified function with ids are in the table. Also, check "contains_functions" variable is set correctly - False if network does not contain all attribute functions.'%(self.prefix))
                     for _id in functionids:
                         if functionid == _id:
                             functionid_exists = True
                             break
                     if functionid_exists == False:
-                        raise error_class('FunctionID (%s) not recognised. Check function is in %s_Functions table.' %(functionid,self.prefix))
+                        raise error_classes.GeneralError('FunctionID (%s) not recognised. Check function is in %s_Functions table.' %(functionid,self.prefix))
                     else:
-                        raise error_class('Unknown error! Function with an id of %s exists in %s_Functions table but could not be written in the node table.' %(functionid,self.prefix))
-                    raise error_class("SHOULD NOT BE DOING THIS")
+                        raise error_classes.GeneralError('Unknown error! Function with an id of %s exists in %s_Functions table but could not be written in the node table.' %(functionid,self.prefix))
+                    raise error_classes.GeneralError("SHOULD NOT BE DOING THIS")
                     #sql here to add the function id manually
                     #sql = 'UPDATE "%s" SET "FunctionID" = %s, "%s" = %s WHERE "NodeID" = %s' %(self.prefix+"_Nodes_"+attribute,functionid,attribute,att_value,i)
                     #self.conn.ExecuteSQL(sql)
@@ -903,9 +911,9 @@ class write:
                             functionid_exists = True
                             break
                     if functionid_exists == False:
-                        raise error_class('FunctionID (%s) not recognised. Check function is in %s_Functions table.' %(functionid,self.prefix))
+                        raise error_classes.GeneralError('FunctionID (%s) not recognised. Check function is in %s_Functions table.' %(functionid,self.prefix))
                     else:
-                        raise error_class('Unknown error! Function with an id of %s exists in %s_Functions table but could not be written in the edge table.' %(functionid,self.prefix))
+                        raise error_classes.GeneralError('Unknown error! Function with an id of %s exists in %s_Functions table but could not be written in the edge table.' %(functionid,self.prefix))
     
         
 class read:
@@ -917,7 +925,7 @@ class read:
         '''
         self.conn = db_conn
         if self.conn == None:
-            raise error_class('No connection to database!')
+            raise error_classes.GeneralError('Error. No connection to database!')
             
         self.prefix = name
 
@@ -933,7 +941,7 @@ class read:
             #is the error caused by me renaming the column after the building of the tables????
             G = nx_pgnet.read(self.conn).pgnet(self.prefix)
         except:
-            raise error_class("Could not read %s network. Check contain_atts variable is set correctly." %(self.prefix))
+            raise error_classes.GeneralError("Error. Could not read %s network. Check contain_atts variable is set correctly." %(self.prefix))
         
         #add role type to G using role id attribute
         #need to check for role attribute and if exists, pull types from role table
@@ -959,11 +967,13 @@ class read:
             for key in attributes[0].keys():
                 if attributes[0][key] == True:
                     result = table_sql(self.conn,self.prefix).check_attribute_table_exists(key,True)
-                    if result == False: print "Table for the '%s' node attribute does not exist. Cancelling network build request." %(key); exit()
+                    if result == False: 
+                        raise error_classes.DatabaseError("Error. Table for the '%s' node attribute does not exist. Cancelling network build request." %(key))
             for key in attributes[1].keys():
                 if attributes[1][key] == True:
                     result = table_sql(self.conn,self.prefix).check_attribute_table_exists(key,False)
-                    if result == False: print "Table for the '%s' edge attribute does not exist. Cancelling network build request." %(key); exit()
+                    if result == False: 
+                        raise error_classes.DatabaseError("Table for the '%s' edge attribute does not exist. Cancelling network build request." %(key))
     
             #need to use attributes to get the required data from the database and
             #adds attributes ang thier functions to G
@@ -1015,14 +1025,5 @@ class read:
         for row in result:
             functions.append(row)
         
-        return functions
-
-class error_class(Exception):
-    '''
-    '''
-    
-    def __init__(self, value):
-        self.parameter = value
-    def __str__(self):
-        return repr(self.parameter)
+        return functions   
     

@@ -15,8 +15,7 @@ import nx_pgnet_atts as nx_pgnet_av #read and write methods to db
 name = "sample"
 #name = "tyne_wear_m_a_b"
 conn = ogr.Open("PG:dbname='_new_schema' host='localhost'port='5433' user='postgres' password='aaSD2011'")
-sql = ("SELECT np_delete_all_tables('%s');" %(name))
-conn.ExecuteSQL(sql)
+conn.ExecuteSQL("SELECT np_delete_all_tables('%s');" %(name))
 
 '''-------------create networkx instance from database----------------------'''
 #G = nx_pg.read_pg(conn, 'sample_lines','sample_points')
@@ -24,12 +23,16 @@ G = nx_pg.read_pg(conn, 'sample_lines_atts','sample_points_atts')
 #G = nx_pg.read_pg(conn, 'tyne_wear_m_a_b') #no attributes added at this time
 contains_atts = False; contains_functions = False
 
+#for nd in G.nodes(): print nd, G.node[nd]['role'],G.node[nd]['id']  
+#for eg in G.edges(): print eg
+
 '''-------------add network to db with specified attributes-----------------'''
 #attributes = None
-attributes = [{'flow':False, 'capacity':True, 'storage':True, 'resistance':False, 'latency':False},
-              {'flow':False, 'capacity':True, 'length':False, 'resistance':False, 'stacking':False}]
+attributes = [{'flow':True, 'storage':True, 'resistance':False, 'latency':False},
+              {'flow':True, 'length':False, 'resistance':False, 'stacking':False}]
 result = nx_pgnet_av.write(conn,name).write_to_db(G,attributes, contains_atts, contains_functions,True,27700,True,False)
 
+exit()
 if result == False: exit()
 else: print "Network added."
 
@@ -45,7 +48,7 @@ if contains_functions == False:
 if contains_atts == False and contains_functions == False:
     attribute = 'storage' ; att_value_range = [5,25] ; functionid_range = [0,2] ; units = 'Per hour'
     nx_pgnet_av.write(conn,name).add_atts_randomly(G,attribute,True,False,att_value_range,functionid_range,units,overwrite=False)
-    attribute = 'capacity' ; att_value_range = [2,56] ; functionid_range = [0,2] ; units = 'Per hour'
+    attribute = 'flow' ; att_value_range = [2,56] ; functionid_range = [0,2] ; units = 'Per hour'
     nx_pgnet_av.write(conn,name).add_atts_randomly(G,attribute,True,True,att_value_range,functionid_range,units,overwrite=False)
 
 if contains_functions == False and contains_atts == True:
@@ -64,8 +67,6 @@ print "Reading network from database. Should contain the units attribute."
 print attributes
 G = nx_pgnet_av.read(conn,name).read_from_db(attributes)
 print "Loaded network. Has %s nodes and %s edges." %(G.number_of_nodes(), G.number_of_edges())
-print G.node[1]
-print G.node[1].keys()
 print "---------------------------------------"
 print "Writing network back to database."
 #contains_atts = write atts from network into database tables (G,atts,contains_atts,contains_funcs,overwrite,srid,directed,multigraph)
