@@ -32,7 +32,7 @@ attributes = [{'flow':True, 'storage':True, 'resistance':False, 'latency':False}
               {'flow':True, 'length':False, 'resistance':False, 'stacking':False}]
 result = nx_pgnet_av.write(conn,name).write_to_db(G,attributes, contains_atts, contains_functions,True,27700,True,False)
 
-exit()
+#exit()
 if result == False: exit()
 else: print "Network added."
 
