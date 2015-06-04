@@ -55,9 +55,9 @@ def check_for_demand_supply_nodes(G):
     if len(demand_nodes) == 0:
         print "Error. No demand nodes nominated."
         exit()
-    elif len(demand_nodes) > 1:
-        print "Need to create a super demand node as %s demand nodes found." %(len(demand_nodes))
-        G,added_edges,added_nodes = create_superdemand_node(G,demand_nodes,added_edges,added_nodes)
+    #elif len(demand_nodes) > 1:
+    #    print "Need to create a super demand node as %s demand nodes found." %(len(demand_nodes))
+    #    G,added_edges,added_nodes = create_superdemand_node(G,demand_nodes,added_edges,added_nodes)
     
     return G,supply_nodes, demand_nodes, added_nodes, added_edges 
 
@@ -700,7 +700,7 @@ def check_over_capacity(G,super_supply_node,super_demand_node,supply_node,demand
     return edges_over,nodes_over
     
     
-def network_simplex(G, demand = 'demand', capacity = 'flow_capacity',
+def network_simplex(G, demand_nodes, demand = 'demand', capacity = 'flow_capacity',
                     weight = 'weight'):
     """Find a minimum cost flow satisfying all demands in digraph G.
     
@@ -825,18 +825,24 @@ def network_simplex(G, demand = 'demand', capacity = 'flow_capacity',
     ##print '--------------bbbb------------------------------------------------'
     sys.path.append('C:/Python27/Lib/site-packages/networkx/algorithms/flow')
     import mincost    
-        
+    print 'In simplex function'
     if not G.is_directed():
         raise nx.NetworkXError("Undirected graph not supported.")
     if not nx.is_connected(G.to_undirected()):
         raise nx.NetworkXError("Not connected graph not supported.")
     if G.is_multigraph():
         raise nx.NetworkXError("MultiDiGraph not supported.")
-    demand_sum = sum(d[demand] for v, d in G.nodes(data = True))
+    demand_sum = 0
+    for nd in G.nodes(data=True): 
+        print nd
+        demand_sum += nd[1]['demand']
+    print 'demand sum:', demand_sum
+    #demand_sum = sum(d[1][demand] for v, d in G.nodes(data = True))
     #if demand in d) != 0:
+    #print 'demand sum:', demand_sum
     if demand_sum != 0:
         raise nx.NetworkXUnfeasible("Sum of the demands should be 0 (%s)." %demand_sum)
-
+    
     # Fix an arbitrarily chosen root node and find an initial tree solution.
     H, T, y, artificialEdges, flowCost, r = \
             mincost._initial_tree_solution(G, demand = demand, capacity = capacity,
@@ -845,7 +851,7 @@ def network_simplex(G, demand = 'demand', capacity = 'flow_capacity',
     ##print 'T:',T.edges() #tree solution
     ##print 'y:',y #node flow costs
     ##print 'artificial edges:', artificialEdges
-    ##print 'flowcost:',flowCost 
+    print 'flowcost:',flowCost 
     ##print 'r:',r #is this the length of the route? or the root node
     
     # Initialize the reduced costs.
@@ -949,55 +955,83 @@ def network_simplex(G, demand = 'demand', capacity = 'flow_capacity',
     for u in H.nodes():
         if not u in G:
             H.remove_node(u)
-
+    print '#### Creating flow dict'
     flowDict = mincost._create_flow_dict(G, H)
 
 
-
+    
     # would help to return the flow supplied - i.e. the demands met
     # need to work out how to do this
   
-    flow_supplied = 0    
-    #for lst in flowDict.keys():
-    #    for val in flowDict[lst]:
-    #        print flowDict[lst][val]
+    print '### Assign flows to edges'
+    # assign flow values to network
+    G = assign_edge_node_flows(G,flowDict)  
+  
+    flow_supplied = []
+    for i in range(0, len(demand_nodes)):
+        flow_supplied.append({'node':demand_nodes[i],'flow':0})
+        in_edges = G.in_edges(demand_nodes[i])
+        for ed in in_edges:
+            print G[ed[0]][ed[1]]
+            flow_supplied[i]['flow'] += G[ed[0]][ed[1]]['flow'] 
+            
+    print 'Flow supplied:', flow_supplied
+    
+    #so by this point we know the volume of flows which have been routed and
+    #thus the volume which has not
+    #by knowning the demand nodes and the supply nodes we can figure out which
+    #nodes have capcity to supply and those which need to recieve
+    #can then find the route they may take
+    
+    #could I run supply demand with capacities high enough that none are over
+    #capcaity to identify the routes the flows might take
+    
+    #run simplex, increase the capacities by one until a route is possible. 
+    #then revert to original to find what is over etc etc.
+    
+    #try making the root node in the network simplex the source node - what 
+    #effect does this have on the process?
+    
+    #still need to try with no supper demand node - there is no need for this 
+    #I think for most networks. (though if needed for some I should keep it in).
+    
+    #by running it with no capacities the results will be invalid as they will
+    #just be assigned to the shortest paths
+    
+    #if no route within the capacity constraints of the network, how do you 
+    #decide which path the flows will take. Shortest path? the route which 
+    #results in the least components being over capacity? Is there another way?
+    #what does the lit say.
+    #is it worth implimenting one for the time being just to get something working?
+    #the last version which workd used the shortest path which was the easiest 
+    #method.
+    #then how do I know which supply nodes should be used (the same foe demand)!
+    
+    #is there a smarter iterative approach I could use??
+    #something which routes the flows using the detail we have then does something
+    #when a bottleneck occurs??
+    
+        
     
     
-    ##print '--------------eeee------------------------------------------------'
+    print 'Over edges:', over_edges
+    print 'Done with network_simplex'
     #exit()
-    return flowCost, flowDict, over_edges, flow_supplied
+    return G, flowCost, flowDict, over_edges, flow_supplied
     
     
 def remove_super_nodes(G,supply_nodes,demand_nodes):
     '''
     '''
-    #print supply_nodes
-    #print demand_nodes
-    #print '---------------------------------'
-    #print G.number_of_nodes()
-    #print G.number_of_edges()
-    #print '---------------------------------'
     for node in G.nodes():
-        #print node
         if node == 'ssupply':
-            #in_edges = G.in_edges(node)
-            #out_edges = G.out_edges(node)
-            #print in_edges
-            #print out_edges
-            #print G.node[node]
             G.remove_node(node)
-            #for u,v in out_edges:
-                #print G.node[v]
         elif node == 'sdemand':
             G.remove_node(node)
         elif G.node[node]['role'] == 'super_supply_supply':
             pass
         elif G.node[node]['role'] == 'super_supply_demand':
             pass
-    #print '---------------------------------'
-    #print G.number_of_nodes()
-    #print G.number_of_edges()
-    #exit()
     return G
     
 def resolve_edge_flows(G,over_edges):
@@ -1046,46 +1080,16 @@ def resolve_edge_flows(G,over_edges):
                     # what does this mean? no route possible at all between the nodes??
                     print '----------------------------------------'
                     for edge in K.edges(data=True): print edge
-                    path_cost, path_dict, new_over_edges, flow_supplied = network_simplex(K,'demand','flow_capacity','weight')                    
-                    print path_dict
+                    for nd in K.nodes(data=True): print nd
+                    G, path_cost, path_dict, new_over_edges, flow_supplied = network_simplex(K,'demand','flow_capacity','weight')                    
+                    #print 'Path dict is:', path_dict
                     print 'Old over edges:',over_edges
                     print 'New over edges:',new_over_edges
                     print '--------'
                     new_path = []
                     for edge in new_over_edges:
                         print 'Searching for SP from %s to %s.' %(edge[0],edge[1])
-                        try:
-                            # try and find a path between the two nodes of the edge
-                            sp = nx.shortest_path(G,edge[0],edge[1],'weight')
-                            print 'Found:', sp
-                            # add path and flow to be added to edges
-                            new_path.append({'path':sp,'flow':edge[2]['flow']})
-                        except:
-                            # could not find path - is there another path which 
-                            # could be searched for which would help???
-                            # could go back one node as this would go from a supply to its super supply for example
-                            # how about looking at chaning the demand node?
-
-                            in_edges = []
-                            for ed in G.edges():
-                                if ed[1] == edge[0]:
-                                    in_edges.append(ed)
-                            
-                            ''' This does not work...needs changing if to make work
-                            for ed in in_edges:
-                                try:
-                                    print 'Looking for path between %s and %s.' %(ed[0],edge[1])
-                                    sp = nx.shortest_path(G,ed[0],edge[1],'weight')
-                                    print 'SP:', sp
-                                    # add path and flow to be added to edges
-                                    new_path.append({'path':sp,'flow':edge[2]['flow']})
-                                except: 
-                                    G = None
-                            
-                            print new_path
-                            '''
-                            # all of the methods above need checking to make sure they work.
-                    
+                        
                     print 'new_path:', new_path
                     path = []
                     #need a function which takes the networkx simplex path dict and creates a list of node i.e. the path as would be returned by the shortest path algoritm                    
