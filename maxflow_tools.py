@@ -23,7 +23,7 @@ If nodes need to have a capacity:
 #############################################################################
 """
 
-
+print_test_outputs = False
 
 import networkx as nx
 import random as r
@@ -36,6 +36,29 @@ sys.path.append('C:/Users/Craig/GitRepo/nx_pgnet_atts')
 import nx_pgnet_atts as nx_pgnet_atts
 import error_classes
 
+
+class topological_changes:
+    '''
+    Contains all functions for changing of the topology.
+    '''
+    
+    def __init__(self,G):
+        if G == None:
+            exit()
+        else:
+            self.G = G
+        
+class flow:
+    '''
+    Contains all functions related to assignment of flows.
+    '''
+
+    def __init__(self,G):
+        if G == None:
+            exit()
+        else:
+            self.G = G
+    
 def check_for_demand_supply_nodes(G):
     '''
     Finds all nodes with a role set as demand or supply. Creates a super node 
@@ -49,15 +72,16 @@ def check_for_demand_supply_nodes(G):
         exit()
     elif len(supply_nodes) > 1:
         #if more than one supply node create a super node with teh edge capacity being equal to teh capacity of the supply node
-        print "Need to create a super supply node as %s supply nodes found." %(len(supply_nodes))
+        #print "Need to create a super supply node as %s supply nodes found." %(len(supply_nodes))
         G,added_edges,added_nodes = create_supersupply_node(G, supply_nodes,added_edges,added_nodes)
         
     if len(demand_nodes) == 0:
         print "Error. No demand nodes nominated."
         exit()
-    elif len(demand_nodes) > 1:
-        print "Need to create a super demand node as %s demand nodes found." %(len(demand_nodes))
-        G,added_edges,added_nodes = create_superdemand_node(G,demand_nodes,added_edges,added_nodes)
+    # i don't think we need super demand nodes so this is now not needed
+    #elif len(demand_nodes) > 1:
+    #    print "Need to create a super demand node as %s demand nodes found." %(len(demand_nodes))
+    #    G,added_edges,added_nodes = create_superdemand_node(G,demand_nodes,added_edges,added_nodes)
     
     return G,supply_nodes, demand_nodes, added_nodes, added_edges 
 
@@ -96,6 +120,20 @@ def get_demand_supply_nodes(G,supply='supply',demand='demand'):
         elif G.node[nd]['role'] == 'demand':
             demand_nodes.append(nd)
 
+    return supply_nodes,demand_nodes
+    
+def get_demand_supply_nodes_byvalues(G):
+    
+    supply_nodes = []
+    demand_nodes = []
+
+    for nd in G.nodes():
+        
+        if G.node[nd]['demand'] < 0:
+            supply_nodes.append(nd)
+        elif G.node[nd]['demand'] > 0:
+            demand_nodes.append(nd)
+            
     return supply_nodes,demand_nodes
 
 def create_supersupply_node(G,supply_nodes,added_edges,added_nodes):
@@ -295,8 +333,6 @@ def convert_topo(G,demand,supply,transfer,flow_capacity):
     
     for nd in node_list:
         
-        #print 'working on nd:', nd
-        #print G.node[nd]
         #add two nodes
         role = G.node[nd]['role']
         atts = G.node[nd]
@@ -535,6 +571,7 @@ def reset_flow_values(G):
     
 def set_demand_values(G):
     '''
+    Set demand values in the network based on the current flow values.
     '''
   
     #need to sum up the flows through nodes with a 'supply' role
@@ -617,6 +654,8 @@ def set_demand_values(G):
     
 def set_capacity_values(G,supply_node,multiplier,default_value,capacity):
     '''
+    Sets the initial capacity value for nodes and edges using tbhe flow passing
+    through them and the multiplier value.
     '''
     
     # loop through edges
@@ -642,12 +681,14 @@ def set_capacity_values(G,supply_node,multiplier,default_value,capacity):
         
         # loop through out edges to assign capacity to supply nodes
         for u,v in out_edges:
+            #print 'Assigning a value of:', G.node['ssupply']['flow']/len(out_edges)
             G.node[v]['flow_capacity'] = G.node['ssupply']['flow']/len(out_edges)
     
     return G
     
 def set_random_capacities(G,a,b,capacity):
     '''
+    Assign a random capacity to both the nodes and the dges in the network.
     '''
     import random    
     for edge in G.edges(): G[edge[0]][edge[1]][capacity] = random.randint(a,b)
@@ -657,6 +698,7 @@ def set_random_capacities(G,a,b,capacity):
     
 def check_over_capacity(G,super_supply_node,super_demand_node,supply_node,demand_node):
     '''
+    Identify those nodes which are over capacity. Ignores supply and demand nodes.
     '''
     # in here need to account for nodes/edges which should be excluded e.g. 16-17,31-16,28-29 and 29-32.
     # eg those with a transfer role, only select those with a role as 'network_edge'
@@ -700,7 +742,7 @@ def check_over_capacity(G,super_supply_node,super_demand_node,supply_node,demand
     return edges_over,nodes_over
     
     
-def network_simplex(G, demand = 'demand', capacity = 'flow_capacity',
+def network_simplex(G, demand_nodes, supply_nodes, super_supply_node, demand = 'demand', capacity = 'flow_capacity',
                     weight = 'weight'):
     """Find a minimum cost flow satisfying all demands in digraph G.
     
@@ -717,37 +759,14 @@ def network_simplex(G, demand = 'demand', capacity = 'flow_capacity',
     Parameters
     ----------
     G : NetworkX graph
-        DiGraph on which a minimum cost flow satisfying all demands is
-        to be found.
-
     demand: string
-        Nodes of the graph G are expected to have an attribute demand
-        that indicates how much flow a node wants to send (negative
-        demand) or receive (positive demand). Note that the sum of the
-        demands should be 0 otherwise the problem in not feasible. If
-        this attribute is not present, a node is considered to have 0
-        demand. Default value: 'demand'.
-
     capacity: string
-        Edges of the graph G are expected to have an attribute capacity
-        that indicates how much flow the edge can support. If this
-        attribute is not present, the edge is considered to have
-        infinite capacity. Default value: 'capacity'.
-
     weight: string
-        Edges of the graph G are expected to have an attribute weight
-        that indicates the cost incurred by sending one unit of flow on
-        that edge. If not present, the weight is considered to be 0.
-        Default value: 'weight'.
 
     Returns
     -------
     flowCost: integer, float
-        Cost of a minimum cost flow satisfying all demands.
-
     flowDict: dictionary
-        Dictionary of dictionaries keyed by nodes such that
-        flowDict[u][v] is the flow edge (u, v).
 
     Raises
     ------
@@ -779,42 +798,7 @@ def network_simplex(G, demand = 'demand', capacity = 'flow_capacity',
     Examples
     --------
     A simple example of a min cost flow problem.
-
     
-    The mincost flow algorithm can also be used to solve shortest path
-    problems. To find the shortest path between two nodes u and v,
-    give all edges an infinite capacity, give node u a demand of -1 and
-    node v a demand a 1. Then run the network simplex. The value of a
-    min cost flow will be the distance between u and v and edges
-    carrying positive flow will indicate the path.
-
-    >>> G=nx.DiGraph()
-    >>> G.add_weighted_edges_from([('s','u',10), ('s','x',5), 
-    ...                            ('u','v',1), ('u','x',2), 
-    ...                            ('v','y',1), ('x','u',3), 
-    ...                            ('x','v',5), ('x','y',2), 
-    ...                            ('y','s',7), ('y','v',6)])
-    >>> G.add_node('s', demand = -1)
-    >>> G.add_node('v', demand = 1)
-    >>> flowCost, flowDict = nx.network_simplex(G)
-    >>> flowCost == nx.shortest_path_length(G, 's', 'v', weight = 'weight')
-    True
-    >>> [(u, v) for u in flowDict for v in flowDict[u] if flowDict[u][v] > 0]
-    [('x', 'u'), ('s', 'x'), ('u', 'v')]
-    >>> nx.shortest_path(G, 's', 'v', weight = 'weight')
-    ['s', 'x', 'u', 'v']
-
-    It is possible to change the name of the attributes used for the
-    algorithm.
-
-    >>> flowCost, flowDict = nx.network_simplex(G, demand = 'spam',
-    ...                                         capacity = 'vacancies',
-    ...                                         weight = 'cost')
-    >>> flowCost
-    37
-    >>> flowDict  # doctest: +SKIP
-    {'a': {'t': 4}, 'd': {'w': 2}, 'q': {'d': 1}, 'p': {'q': 2, 'a': 2}, 't': {'q': 1, 'w': 1}, 'w': {}}
-
     References
     ----------
     W. J. Cook, W. H. Cunningham, W. R. Pulleyblank and A. Schrijver.
@@ -825,18 +809,23 @@ def network_simplex(G, demand = 'demand', capacity = 'flow_capacity',
     ##print '--------------bbbb------------------------------------------------'
     sys.path.append('C:/Python27/Lib/site-packages/networkx/algorithms/flow')
     import mincost    
-        
+    #print 'In simplex function'
     if not G.is_directed():
         raise nx.NetworkXError("Undirected graph not supported.")
     if not nx.is_connected(G.to_undirected()):
         raise nx.NetworkXError("Not connected graph not supported.")
     if G.is_multigraph():
         raise nx.NetworkXError("MultiDiGraph not supported.")
-    demand_sum = sum(d[demand] for v, d in G.nodes(data = True))
-    #if demand in d) != 0:
+    
+    demand_sum = 0
+    for nd in G.nodes(data=True):
+        demand_sum += nd[1]['demand']
+        
+    #print '#### Demand sum:', demand_sum
+    
     if demand_sum != 0:
         raise nx.NetworkXUnfeasible("Sum of the demands should be 0 (%s)." %demand_sum)
-
+    
     # Fix an arbitrarily chosen root node and find an initial tree solution.
     H, T, y, artificialEdges, flowCost, r = \
             mincost._initial_tree_solution(G, demand = demand, capacity = capacity,
@@ -845,7 +834,7 @@ def network_simplex(G, demand = 'demand', capacity = 'flow_capacity',
     ##print 'T:',T.edges() #tree solution
     ##print 'y:',y #node flow costs
     ##print 'artificial edges:', artificialEdges
-    ##print 'flowcost:',flowCost 
+    #print 'flowcost:',flowCost 
     ##print 'r:',r #is this the length of the route? or the root node
     
     # Initialize the reduced costs.
@@ -908,9 +897,6 @@ def network_simplex(G, demand = 'demand', capacity = 'flow_capacity',
                         H[v][u]['flow'] -= eps
 
         # Update tree solution.
-        ##print 'updating tree solution:'
-        ##print 'adding edge:', newEdge
-        ##print 'removing edge:', leavingEdge
         T.add_edge(*newEdge)
         T.remove_edge(*leavingEdge)
 
@@ -949,190 +935,470 @@ def network_simplex(G, demand = 'demand', capacity = 'flow_capacity',
     for u in H.nodes():
         if not u in G:
             H.remove_node(u)
-
+    #print '#### Creating flow dict'
     flowDict = mincost._create_flow_dict(G, H)
-
-
-
+  
     # would help to return the flow supplied - i.e. the demands met
     # need to work out how to do this
   
-    flow_supplied = 0    
-    #for lst in flowDict.keys():
-    #    for val in flowDict[lst]:
-    #        print flowDict[lst][val]
+    #print '#### Assign flows to edges'
+    # assign flow values to network
+    G = assign_edge_node_flows(G,flowDict)  
     
+    demand_supplied = []
+    for i in range(0, len(demand_nodes)):
+        demand_supplied.append({'node':demand_nodes[i],'flow':0,'demand':G.node[demand_nodes[i]]['demand']})
+        
+        in_edges = G.in_edges(demand_nodes[i])
+        for ed in in_edges:
+            demand_supplied[i]['flow'] += G[ed[0]][ed[1]]['flow'] 
+        
+    supply_used = []
+    if super_supply_node != False:
+        supply_used.append({'node':super_supply_node,'flow':G.node[super_supply_node]['flow'],'demand':G.node[super_supply_node]['demand']})  
+    else:
+        supply_used.append({})
+    for i in range(0, len(supply_nodes)):
+        supply_used.append({'node':supply_nodes[i],'flow':G.node[supply_nodes[i]-1]['flow'],'demand':G.node[supply_nodes[i]-1]['demand']})                
     
-    ##print '--------------eeee------------------------------------------------'
-    #exit()
-    return flowCost, flowDict, over_edges, flow_supplied
+    if print_test_outputs == True:
+        print 'demand supplied:', demand_supplied
+        print 'supply used:', supply_used
+
+    return G, flowCost, flowDict, over_edges, demand_supplied, supply_used
     
+def get_demand_supplied_supply_used(G):
+    '''
+    Find the supply used from each supply node and the value of flow sent to 
+    each demand node.
+    '''    
+    supply_nodes, demand_nodes = get_demand_supply_nodes_byvalues(G)
+    
+    #print '------------------'
+    #print 'Supply nodes:', supply_nodes
+    #print 'Demand nodes:', demand_nodes
+    #print '------------------'    
+
+    '''
+    if supply_nodes != [39]:
+        for node in G.nodes(data=True):
+            print node
+        print 'Supply node is not correct'
+        exit()
+    '''
+    demand_supplied = []
+
+    for i in range(0, len(demand_nodes)):
+        demand_supplied.append({'node':demand_nodes[i],'flow':0,'demand':G.node[demand_nodes[i]]['demand']})
+        
+        in_edges = G.in_edges(demand_nodes[i])
+        #print 'Edges flowing into demand node:', in_edges
+        for ed in in_edges:
+            demand_supplied[i]['flow'] += G[ed[0]][ed[1]]['flow'] 
+        
+    supply_used = []
+    
+    for i in range(0, len(supply_nodes)):
+        supply_used.append({'node':supply_nodes[i],'flow':G.node[supply_nodes[i]-1]['flow'],'demand':G.node[supply_nodes[i]]['demand']}) 
+        
+        out_edges = G.out_edges(supply_nodes[i])
+        for ed in out_edges:
+            supply_used[i]['flow'] += G[ed[0]][ed[1]]['flow']
+        
+    #print 'demand supplied:', demand_supplied
+    #print 'supply used:', supply_used
+    
+    return demand_supplied, supply_used
     
 def remove_super_nodes(G,supply_nodes,demand_nodes):
     '''
+    Remove the super nodes from the network.
     '''
-    #print supply_nodes
-    #print demand_nodes
-    #print '---------------------------------'
-    #print G.number_of_nodes()
-    #print G.number_of_edges()
-    #print '---------------------------------'
     for node in G.nodes():
-        #print node
         if node == 'ssupply':
-            #in_edges = G.in_edges(node)
-            #out_edges = G.out_edges(node)
-            #print in_edges
-            #print out_edges
-            #print G.node[node]
             G.remove_node(node)
-            #for u,v in out_edges:
-                #print G.node[v]
         elif node == 'sdemand':
             G.remove_node(node)
         elif G.node[node]['role'] == 'super_supply_supply':
             pass
         elif G.node[node]['role'] == 'super_supply_demand':
             pass
-    #print '---------------------------------'
-    #print G.number_of_nodes()
-    #print G.number_of_edges()
-    #exit()
     return G
+
+def resolve_edge_flows(G,over_edges,demand_nodes, supply_nodes, super_supply_node,demand_supplied,supply_used):
+    '''
+    Should be able to combine this into the network simplex function later.
+    Optimizes for the availble supply capacity the paths where the un-met
+    demands are met.
+    '''
+   
+    # now need optimise the existing supply capacities for the unmet demands
+    # this is simple where only one supply and one demand
+    # with multiple supply nodes need to use the one with surplus capacity if possible
+    #   if there is no route then use an alternative
+    # with have to route from all supplied to all demands to find the least cost 
+    # solution where all demands are met
     
-def resolve_edge_flows(G,over_edges):
+    #  pre-processing on the supply nodes
+    # calculate the supply value per supply node if a super supply node is used
+    
+    if print_test_outputs == True: print supply_used
+    supply_available = []
+    if supply_used[0]!={}: #this first entry is for a supper supply node, after is supply nodes
+        demand_per_snode = (supply_used[0]['demand']/(len(supply_used)-1))*-1
+    
+        for i in range(1,len(supply_used)):
+            supply_available.append({'node':supply_used[i]['node'],'available':demand_per_snode-supply_used[i]['flow']})
+    else: #is no supper supply node only one supply node
+        supply_available.append({'node':supply_used[1]['node'], 'available':(G.node[supply_used[1]['node']]['demand']*-1)-supply_used[1]['flow']})
+        
+    # print 'Available supply:', supply_available
+
+    #  un-met demand - get nodes and the amount of demand un-met
+    unmet_demand = []
+    for i in range(0,len(demand_supplied)):
+        unmet_demand.append({'node':demand_supplied[i]['node'],'unmet':demand_supplied[i]['demand']-demand_supplied[i]['flow']})
+     
+    # print 'Un-met demand:', unmet_demand
+
+    pos_solutions = []
+    optimal_solutions = []
+
+    # identify those nodes with unmet demands and look for solutions
+    for dnd in unmet_demand:
+        # if a demand node has an umet demand
+        if dnd['unmet'] != 0:
+            check_another_source = False
+            supply_with_cap = False
+            pos_solutions.append({'demand_node':dnd['node'],'options':[],'unmet':dnd['unmet']})
+            
+            # get path to node from a source with suitable capacity
+            for snd in supply_available:
+                
+                if snd['available'] >= dnd['unmet']:
+                    supply_with_cap = True
+                    
+                    # find least cost path between the node pair
+                    try:
+                        path = nx.shortest_path(G,snd['node'],dnd['node'],'weight')
+                    except: # no route possible
+                        check_another_source = True
+                        path = []
+                    
+                    # calculate the cost of the path
+                    cost = 0.0
+                    for nd in range(1, len(path)):
+                        try:
+                            cost += G[path[nd-1]][path[nd]]['weight']
+                        except:
+                            #in case no weight field - as with 'node edges'
+                            cost += 0.0
+                    
+                    # if path found
+                    if path != []:
+                        
+                        # populate pos_solutions list with found path                            
+                        for i in range(0,len(pos_solutions)):
+                            if pos_solutions[i]['demand_node'] == dnd['node']:                            
+                                pos_solutions[i]['options'].append({'supply_node':snd['node'],'path':path,'cost': cost, 'weight': dnd['unmet']})
+            
+            # if no route possible from a supply node with available
+            # capacity check other supply nodes which will cause them to go 
+            # over capacity
+            if check_another_source == True or supply_with_cap == False:
+                
+                # get path to node from a source
+                for snd in supply_available:
+
+                    # find least cost path between the node pair
+                    try:
+                        path = nx.shortest_path(G,snd['node'],dnd['node'],'weight')
+                    except: # no route possible
+                        check_another_source = True
+                        path = []
+
+                    # calculate the cost of the path
+                    cost = 0.0
+                    for nd in range(1, len(path)):
+                        try:
+                            cost += G[path[nd-1]][path[nd]]['weight']
+                        except:
+                            #in case no weight field - as with 'node edges'
+                            cost += 0.0
+                    
+                    # if path found
+                    if path != []:
+                        
+                        # populate pos_solutions list with found path                            
+                        for i in range(0,len(pos_solutions)):
+                            if pos_solutions[i]['demand_node'] == dnd['node']:                            
+                                pos_solutions[i]['options'].append({'supply_node':snd['node'],'path':path,'cost': cost, 'weight': dnd['unmet']})
+    
+    
+    #print len(pos_solutions), 'possible solution(s) have been found.'
+    #print pos_solutions
+    for solution in pos_solutions:
+        if solution['options'] == []:
+            # no options found for demand node
+            found_path = False
+            for sd in supply_nodes:
+                if nx.has_path(G,sd,solution["demand_node"]) == True:
+                    found_path = True
+                    break
+            if found_path == True:
+                print 'Path exists but no solution found. MAJOR ERROR!'
+            else:
+                # demand node not reachable, but connected. Reduce demand to 
+                # zero. This should probably actually be a failure.
+                #print 'Demand node not reachable. It should be removed.'
+                #reduce supply by the demand being removed
+                G.node[super_supply_node]['demand'] -= G.node[solution["demand_node"]]['demand']*-1
+                #set demand as zero
+                G.node[solution["demand_node"]]['demand'] = 0
+                
+    y = 0
+    while y < len(pos_solutions):
+        demand_node = pos_solutions[y]
+        # if only one solution for each demand node then set those as the optimal solutions and remove from the list
+        if len(demand_node['options']) == 1:
+
+            # only a single solution found and thus this is the optimal solutions by default
+            temp = {'demand_node':demand_node['demand_node'],'unmet':demand_node['unmet'],'path':demand_node['options'][0]['path'],'supply_node':demand_node['options'][0]['supply_node'],'cost':demand_node['options'][0]['cost'],'weight':demand_node['options'][0]['weight']}
+            optimal_solutions.append(temp)
+            
+            # adjust the supply available in the supply nodes dict
+            for i in range(0,len(supply_available)):
+                if supply_available[i]['node'] == demand_node['options'][0]['supply_node']:
+                    supply_available[i]['available'] = supply_available[i]['available'] - demand_node['options'][0]['weight']
+            
+            # remove from pos solutions as now an optimal solution
+            pos_solutions.pop(y) 
+            y -= 1 
+        
+        # if no more solutions to be found stop
+        if len(pos_solutions) == 0:
+            break
+        y += 1
+    
+    if print_test_outputs == True: print 'Supply node states:', supply_available   
+    
+    # moving on to nodes with multiple solutions
+        
+    #if there is more than one option available from some demand nodes
+        # first try using for each demand node the option with the minimum cost
+        # see the effect on the supply nodes (will have to make of copy of this dict for this)
+        # this is the minimum that can be done I think
+        # after this to make it more advanceed to to look at making sure a few as possible supply nodes are overloaded
+    
+    # make a copy of the supply_node dict
+    supply_available_copy = []
+    for item in supply_available:
+        supply_available_copy.append(item.copy())        
+    
+    opt_solution = []
+    # loop though each demand node
+    for demand_node in pos_solutions:
+        
+        least_cost = {'cost': 9999999999999, 'counter': 9999999999, 'supply_node': 9999999999999999999, 'weight':99999999, 'path':[]}
+        k = 0
+        # loop through the options to identify the least cost option
+        for path_option in demand_node['options']:
+            if path_option['cost'] < least_cost['cost']:
+                least_cost['cost'] = path_option['cost']
+                least_cost['counter'] = k
+                least_cost['supply_node'] = path_option['supply_node']
+                least_cost['weight'] = path_option['weight']
+                least_cost['path'] = path_option['path']
+            k += 1
+            
+        # adjust the supply available in the supply nodes dict
+        for i in range(0,len(supply_available_copy)):
+            if supply_available_copy[i]['node'] == least_cost['supply_node']:
+                supply_available_copy[i]['available'] = supply_available_copy[i]['available'] - least_cost['weight']
+        
+        # add least cost solution to a list to record chosen option
+        least_cost['demand_node'] = demand_node['demand_node']
+        least_cost['unmet'] = demand_node['unmet']
+        opt_solution.append(least_cost)
+    if print_test_outputs == True: print '----------------------'
+    # up to this point routes for all demand nodes should be assigned
+    # in either the opt_solution list of the optimal_solutions list
+    # for the former these should then be adjusted to utilise any spare supply 
+    # capacity is possible using the supply_available_copy list
+        
+    #   CODE TO GO HERE TO OPTIMSE USE OF SUPPLY CAPACITY
+    
+    # Now that optimal solutons have been found need to merge the two solution
+    # lists and supply_available lists
+    
+    # merge opt_solutions and optimal_solutions
+    for solution in opt_solution:
+        temp = {'unmet':solution['unmet'],'weight':solution['weight'],'demand_node':solution['demand_node'],'cost':solution['cost'],'path':solution['path'],'supply_node':solution['supply_node']}
+        optimal_solutions.append(temp)
+        # update the pos_solution list to do full due-dilligence
+        for i in range(0, len(pos_solutions)):
+            if pos_solutions[i]['demand_node'] == solution['demand_node']:
+                pos_solutions.pop(i)
+                break
+        # update supply_available
+        for i in range(0, len(supply_available)):
+            if supply_available[i]['node'] == solution['supply_node']:
+                supply_available[i]['available'] = supply_available[i]['available'] - solution['weight']
+                break
+   
+    # Finally add flows to network before returning
+    
+    for solution in optimal_solutions:
+        weight = solution['weight']
+        for i in range(1, len(solution['path'])):
+            G[solution['path'][i-1]][solution['path'][i]]['flow'] = G[solution['path'][i-1]][solution['path'][i]]['flow'] + weight
+            
+    # Print off some results
+    if print_test_outputs == True:
+        print '-------------------------'
+        print 'Optimal solutions:'
+        for solution in optimal_solutions:
+            print solution   
+        print 'Demand nodes to resolve:'
+        print pos_solutions
+        print 'Supply node states:'
+        print supply_available
+        print '-------------------------'
+    
+    demand_supplied = []
+    for i in range(0, len(demand_nodes)):
+        # will fail here if demand node has been removed from the network
+        demand_supplied.append({'node':demand_nodes[i],'flow':0,'demand':G.node[demand_nodes[i]]['demand']})
+        
+        in_edges = G.in_edges(demand_nodes[i])
+        for ed in in_edges:
+            demand_supplied[i]['flow'] += G[ed[0]][ed[1]]['flow'] 
+        
+    supply_used = []
+    if super_supply_node != False:
+        supply_used.append({'node':super_supply_node,'flow':G.node[super_supply_node]['flow'],'demand':G.node[super_supply_node]['demand']})  
+    else:
+        supply_used.append({})
+    for i in range(0, len(supply_nodes)):
+        supply_used.append({'node':supply_nodes[i],'flow':G.node[supply_nodes[i]-1]['flow'],'demand':G.node[supply_nodes[i]-1]['demand']}) 
+    
+    unmet_demand = []
+    for i in range(0,len(demand_supplied)):
+        unmet_demand.append({'node':demand_supplied[i]['node'],'unmet':demand_supplied[i]['demand']-demand_supplied[i]['flow']})
+
+    # check all demands have been met                       
+    for node in unmet_demand:
+        if node['unmet'] != int(0):
+            print 'For some reason there are still inmet demands. This should not be the case.'
+            print 'Final Un-met demand:', unmet_demand 
+            exit()
+            
+    return G, demand_supplied, supply_used
+
+def find_alternative_route(G):
     '''
+    To find an alternative route when an edge is overloaded.
     '''
-    net_edge_over = []
-    # copying network
+    # this should take an overloaded edge and look for a route where no edges
+    # will be overloaded. This then has implications as where do you stop with 
+    # this. The process could go on forever.
+    
     K = G.copy()
     
-    t = 0
-    while t <= len(over_edges)-1:
-        #print '-------------------'
-        #print 'Resolving edge:', over_edges[t]
+    #loop through network and remove any edges at capacity
+    # for those not reduce capacity based on flow
+    # record those which are over cpacity
+    edge_to_reduce = []
+    for edge in K.edges():
+        if  K[edge[0]][edge[1]]['flow_capacity'] ==  K[edge[0]][edge[1]]['flow']:
+            # edge at capacity
+            K.remove_edge(edge[0],edge[1])
+        elif K[edge[0]][edge[1]]['flow_capacity'] <  K[edge[0]][edge[1]]['flow']:
+            # edge over cacpacity - record and remove
+            edge_to_reduce.append(edge)
+            K.remove_edge(edge[0],edge[1])
+        else:
+            #set available capacity
+            K[edge[0]][edge[1]]['available_capacity'] =  K[edge[0]][edge[1]]['flow_capacity']- K[edge[0]][edge[1]]['flow']
     
+    
+    #print 'Edges to reduce capacity on:', edge_to_reduce
+    #print 'Edges in G:', G.number_of_edges()
+    #print 'Edges in K:', K.number_of_edges()
+    
+    for edge in edge_to_reduce:
         try:
-            node1 = G.node[over_edges[t][0]]
-            node1 = True
-        except:
-            node1 = False
-        try:
-            node2 = G.node[over_edges[t][1]]
-            node2 = True
-        except:
-            node2 = False
+            path = nx.shortest_path(K,edge[0],edge[1],'weight')
+        except nx.exception.NetworkXNoPath:
+            #print 'no path exists'
+            pass
+        else:
+            #print 'A path exists:',path
+            pass
+            ok = True
+            weight_needed = G[edge[0]][edge[1]]['flow'] - G[edge[0]][edge[1]]['flow_capacity']
+            #print weight_needed
+            for i in range(1, len(path)):
+                if K[path[i-1]][path[i]]['available_capacity'] < weight_needed:
+                    pass
+                else:
+                    ok = False
+                    break
+                
+            if ok == True:
+                #print 'path works!'
+                pass
+            else:
+                #print 'Path cannot handle the capacity.'
+                pass
+    
+    return G
+
+def remove_node(G, node_to_remove):
+    '''
+    This is to specificaly handle the removal of a node from the network.
+    '''
+    #    if print_test_outputs == True:
+    '''
+    print '----------------------------------------------------------------------'
+    print 'Node asked to be removed:', node_to_remove
+    print 'Node details:', G.node[node_to_remove]
+    print '----------------------------------------------------------------------'
+    '''
+    G.remove_node(node_to_remove)    
+
+    return G
+    
+def track_flows(G, super_supply_node, supply_nodes, demand_nodes):
+    '''
+    Track a flow where it appears that a flow which starts does not reacch
+    a demand node.
+    
+    This is not really needed. Was just added for testing purposes.
+    '''    
+    supply = 0
+    demand = 0
+    if super_supply_node == False:
+        for nd in supply_nodes:
+            supply += G.node[nd]['demand']*-1
+    else:
+        supply = G.node[super_supply_node]['demand']*-1
         
-        if node1 == True and node2 == True:
-            #print 'Both nodes in edge are part of network.'
-            try:
-                # does edge exist in network
-                edge = G[over_edges[t][0]][over_edges[t][1]]
-                # if edge exists add to net edge over list
-                net_edge_over.append(edge)
-            except:
-                #print 'Edge does not exist in network. Examining other possibilities.'
-                #if edge does not exist in network look to find path flow would take between the listed nodes
-                try:
-                    
-                    for nd in K.nodes(): K.node[nd]['demand'] = 0
-                    
-                    #print 'setting demand values'
-                    K.node[over_edges[t][0]]['demand'] = 0-over_edges[t][2]['flow'] 
-                    K.node[over_edges[t][1]]['demand'] = over_edges[t][2]['flow']
-                    
-                    #print 'running network simplex'
-                    # need to decide what to do if the over edges are the same - 
-                    # what does this mean? no route possible at all between the nodes??
-                    print '----------------------------------------'
-                    for edge in K.edges(data=True): print edge
-                    path_cost, path_dict, new_over_edges, flow_supplied = network_simplex(K,'demand','flow_capacity','weight')                    
-                    print path_dict
-                    print 'Old over edges:',over_edges
-                    print 'New over edges:',new_over_edges
-                    print '--------'
-                    new_path = []
-                    for edge in new_over_edges:
-                        print 'Searching for SP from %s to %s.' %(edge[0],edge[1])
-                        try:
-                            # try and find a path between the two nodes of the edge
-                            sp = nx.shortest_path(G,edge[0],edge[1],'weight')
-                            print 'Found:', sp
-                            # add path and flow to be added to edges
-                            new_path.append({'path':sp,'flow':edge[2]['flow']})
-                        except:
-                            # could not find path - is there another path which 
-                            # could be searched for which would help???
-                            # could go back one node as this would go from a supply to its super supply for example
-                            # how about looking at chaning the demand node?
-
-                            in_edges = []
-                            for ed in G.edges():
-                                if ed[1] == edge[0]:
-                                    in_edges.append(ed)
-                            
-                            ''' This does not work...needs changing if to make work
-                            for ed in in_edges:
-                                try:
-                                    print 'Looking for path between %s and %s.' %(ed[0],edge[1])
-                                    sp = nx.shortest_path(G,ed[0],edge[1],'weight')
-                                    print 'SP:', sp
-                                    # add path and flow to be added to edges
-                                    new_path.append({'path':sp,'flow':edge[2]['flow']})
-                                except: 
-                                    G = None
-                            
-                            print new_path
-                            '''
-                            # all of the methods above need checking to make sure they work.
-                    
-                    print 'new_path:', new_path
-                    path = []
-                    #need a function which takes the networkx simplex path dict and creates a list of node i.e. the path as would be returned by the shortest path algoritm                    
-                    for key in path_dict.keys():
-                        for nkey in path_dict[key].keys():
-                            if path_dict[key][nkey] > 0:
-                                path.append([key,nkey,path_dict[key][nkey]])
-                                  
-                    #print 'Found path for flow, adding edges to net_edge_over list.'
-                    #print 'Path found:',path
-                    for i in range(0,len(path)):
-                        #net_edge_over.append((path[i],path[i+1],over_edges[t][2]['flow']))
-                        net_edge_over.append((path[i][0],path[i][1],path[i][2]))
-                        
-                    # add new path list to the path list which will be added to the network
-                    for npath in new_path:
-                        #print npath
-                        #print npath['path']
-                        for i in range(0,len(npath['path'])-1):
-                            print npath['path'][i],npath['path'][i+1],npath['flow']
-                            net_edge_over.append((npath['path'][i],npath['path'][i+1],npath['flow']))
-                    
-                except:
-                    #print 'Path could not be found between the two nodes. Terminating.'
-                    path_between = [over_edges[t][0]],[over_edges[t][1]]
-                    return None, path_between
-                    #for eg in G.edges(data=True):print eg
-                    #exit()
-                    #this is where I need to write something which deals with no path being possible for the flow.
-                    #can this be identified elsewhere ie. before it gets to this point
-
-                edge = False
-            t = t + 1
-        elif node1 == True and node2 == False or node1 == False and node2 == True:
-            #print 'At least some of the listed nodes are in network. Added to net_edge_over list.'
-            net_edge_over.append(((over_edges[t][0]),(over_edges[t+1][1]),over_edges[t][2]['flow']))
-            t = t + 2
-            
-    #print 'Final net_edge_over list is:'
-    #print net_edge_over
-    #print 'Completed resolving edge function'
-    #exit()
-    return  G, net_edge_over
+    for nd in demand_nodes:
+        demand += G.node[nd]['demand']
     
+    if supply != demand:
+        print 'Need to track %s missing flow(s)' %(demand-supply)
+       
+    return G
 
 def handle_subgraphs(K,supply_nodes,demand_nodes,super_supply_node,super_demand_node):
     '''
+    Deals with issues around the network becoming fragmented and the potential
+    issues that arise with supply and demand nodes and demands being met.
+    
+    NEED TO GO THROUGH THIS CAREFULLY AND IDENTIFY WHAT NEEDS DOING. IT JUST 
+    ABOUT WORKS BUT NOT FULLY AS YET. TIME TO SORT THIS ONCE AND FOR ALL!!!!
     '''
     # what happens when the network becomes disconnected???? (apart from the algorithm breaking!)
     # if a subgraph has no demand points in it can we throw it away?
@@ -1143,18 +1409,17 @@ def handle_subgraphs(K,supply_nodes,demand_nodes,super_supply_node,super_demand_
     G = K.copy()
     G = G.to_undirected()
     graphs = nx.connected_component_subgraphs(G)
-
-    graph_states = []
+    
+    graph_states2 = []
     graph_supply_demand_nds = []
     # test if supply in a differnet sub-network to demand
     for g in graphs:
         #store the nodes found for the sub graph        
         supply_nd = []; ssupply_nd = []
         demand_nd = []; sdemand_nd = []
-        #store if nodes found in the sub graph
+        #store if nodes found in the sub graph - pre set as false
         supply_in = False; ssupply_in = False
         demand_in = False; sdemand_in = False
-        #print 'Nodes in subgraph:',g.nodes()
 
         #check if super supply connected to graph if uses a super supply graph        
         
@@ -1176,158 +1441,191 @@ def handle_subgraphs(K,supply_nodes,demand_nodes,super_supply_node,super_demand_
                     demand_nd.append(nd)
                     demand_in = True
         
-        graph_states.append([ssupply_in,sdemand_in,supply_in,demand_in])
+        graph_states2.append({'ssupply_in':ssupply_in,'sdemand_in':sdemand_in,'supply_in':supply_in,'demand_in':demand_in})
         graph_supply_demand_nds.append([ssupply_nd,sdemand_nd,supply_nd,demand_nd])
-        
-    print 'Subgraph supply/demand status:',graph_states
-            
+    
+    # run a quick assessment of the network - quickly check if anything computable
+    routing_possible = False
+    for subgraph in graph_states2:
+        # if there is a subgraph with a minimum of a single demand and supply node then continue this process
+        if subgraph['supply_in'] == True and subgraph['demand_in'] == True:
+            routing_possible = True
+
+    # no subgraphs with both a supply and demand node so terminate        
+    if routing_possible == False:
+        return None, demand_nodes
+    
     # first check if graph still works - check in subgraph for at least a supply and demand point
     terminate = True
     demand_value = 0
     graph = 0
-    for lst in graph_states:
-        if lst[0] == False and lst[2] == False:
-            #no supply nodes in sub graph
-            if lst[1] == False and lst[3] == False:
-                #no supply or demand nodes - remove sub graph
-                K.remove_nodes_from(graphs[graph].nodes())            
+    
+    for lst in graph_states2:
+        
+        if lst['ssupply_in'] == False and lst['supply_in'] == False:
+            # no supply nodes in sub graph
+            if lst['sdemand_in'] == False and lst['demand_in'] == False:
+                # no supply or demand nodes - remove sub graph
+                for nde in graphs[graph].nodes():
+                    K = remove_node(K,nde)
             else:
-                #no supply nodes in sub graph thus remove but some demand nodes
-                #need to find demand value in sub graph before removing
-                #needs to go through all demand nodes
+                # no supply nodes in sub graph thus remove but some demand nodes
+                # need to find demand value in sub graph before removing
                 for nd in graphs[graph].nodes():
-                    if lst[1] != False:
+                    
+                    if lst['sdemand_in'] != False:
+                        
                         if nd == super_demand_node:
                             #add demand value to demand value
                             demand_value = demand_value + K.node[nd]['demand']
                     else:
+                        
                         for dnd in demand_nodes:
+                        
                             if nd == dnd:
-                                demand_value = demand_value + K.node[nd]['demand']
-                                
-                K.remove_nodes_from(graphs[graph].nodes())
-            
-        elif lst[1] == False and lst[3] == False:
+                                # need to reduce the supply in the network by this value
+                                if super_supply_node != False:
+                                    # reduce the demand value from the super supply node
+                                    K.node[super_supply_node]['demand'] += K.node[nd]['demand']
+                                else:
+                                    # reduce the demand value for the single supply node
+                                    K.node[supply_nodes[0]]['demand'] += K.node[nd]['demand']                                    
+                                    
+                                # remove node from list of demand nodes
+                                demand_nodes.remove(dnd)
+
+                for nde in graphs[graph].nodes():
+                    K = remove_node(K,nde)
+    
+        elif lst['sdemand_in'] == False and lst['demand_in'] == False:
             #no demand points in subgraph thus remove
-            if lst[0] == False and lst[2] == False:
-                #no demand or supply nodes - remove sub graph #this is covered above already           
-                K.remove_nodes_from(graphs[graph].nodes())
+            if lst['ssupply_in'] == False and lst['supply_in'] == False:
+                #no demand or supply nodes - remove sub graph #this is covered above already
+                for nde in graphs[graph].nodes():
+                    K = remove_node(K,nde)
+                    
             else:
-                #no demand nodes in sub graph thus remove but some supply
-                #need to find demand value in sub graph before removing
-                #needs to go through all demand nodes
+                # no demand nodes in sub graph thus remove but some supply
                 for nd in graphs[graph].nodes():
-                    if lst[1] != False:
-                        if nd == super_supply_node:
-                            #add demand value to demand value
+                    
+                    if nd == super_supply_node:
+                        # leave this subgraph in and handle separetly
+                        # can only remove this if we know there is one other supply node in the network
+                        # this needs thinking about
+                        pass
+                    
+                    for dnd in supply_nodes:
+                        if nd == dnd:
                             demand_value = demand_value - K.node[nd]['demand']
-                    else:
-                        for dnd in supply_nodes:
-                            if nd == dnd:
-                                demand_value = demand_value - K.node[nd]['demand']
-                                
-                K.remove_nodes_from(graphs[graph].nodes()) #this will also remove the edges connected to the nodes
-                #print 'Subgraph deemed deletable:', graphs[graph].nodes()
+                
+                for nde in graphs[graph].nodes():
+                    K = remove_node(K,nde)
+            
         else:
+            # at least one supply (or supersupply) node and atleast one demand node
+            # subgraph might be computable
             # subgraph has at least one of each in - need to check possible to compute still           
             # check sum of demands is still equal in subgraph
             # if not adjust accoridngly; if no demand terminate
             terminate = False
             
-            dtotal = 0.0
-            for nd in graphs[graph].nodes(): dtotal += graphs[graph].node[nd]['demand']
+            # get total supply and demand in network and the related nodes           
+            demand_in_g = 0
+            supply_in_g = 0
+            supply_n = []
+            demand_n = []
+            for nd in graphs[graph].nodes():
+                # if a positive demand, node is a demand node
+                if graphs[graph].node[nd]['demand'] > 0:
+                    demand_n.append(nd)
+                    demand_in_g += graphs[graph].node[nd]['demand']
+                # if a negative demand, node is a supply node
+                elif graphs[graph].node[nd]['demand'] < 0:
+                    supply_n.append(nd)
+                    supply_in_g += graphs[graph].node[nd]['demand']
             
-            #print dtotal
-            if dtotal == 0: pass
+            # dont need to adjust as supply and demand equal
+            if demand_in_g - supply_in_g == 0:
+                pass
             else: 
-                print 'Need to change the demand values in network'
-                if dtotal < 0:
-                    # add value to supply nodes (reduce the supply)
-                    # this needs to account for multiple supply nodes
-                    #graph_states.append([ssupply_in,sdemand_in,supply_in,demand_in])
-                    #graph_supply_demand_nds.append([ssupply_nd,sdemand_nd,supply_nd,demand_nd])
+                # adjusting the supply and demand values in subgraph
                 
-                    # add (thus minus) from the supply value if a super supply node
-                    if graph_states[graph][0] == True:
-                        K.node[graph_supply_demand_nds[graph][0][0]]['demand'] = K.node[graph_supply_demand_nds[graph][0][0]]['demand'] + dtotal
-                    # add (thus minus) an equal value from the supply value off all supply nodes
-                    # if multiple supply nodes in a subgraph do i need to create a super supply?
-                    # same for demand nodes (see above)?
-                    else:
-                        dtotal = dtotal/len(graph_supply_demand_nds[graph][2])
-                        for nd in graph_supply_demand_nds[graph][2]:
-                            K.node[nd]['demand'] = K.node[nd]['demand'] + dtotal
-                            
-                elif dtotal > 0:
-                    # remove value from demand nodes (increase supply) (irrespective of capacity)
-                    # this needs to account for multiple demand nodes
+                # if supply is greater than demand
+                if supply_in_g > demand_in_g:
                     
-                    # add from the supply value if a super supply node
-                    if graph_states[graph][1] == True                    :                
-                        K.node[graph_supply_demand_nds[graph][1][0]]['demand'] = K.node[graph_supply_demand_nds[graph][1][0]]['demand'] + dtotal
-                    # add an equal value from the supply value off all supply nodes
-                    # if multiple supply nodes in a subgraph do i need to create a super supply?
-                    # same for demand nodes (see above)?
-                    else:
-                        dtotal = dtotal/len(graph_supply_demand_nds[graph][3])
-                        for nd in graph_supply_demand_nds[graph][3]:
-                            K.node[nd]['demand'] = K.node[nd]['demand'] + dtotal
+                    # find the supply nodes
+                    #   done above -supply_n
                     
+                    # get difference
+                    diff = float(demand_in_g) - supply_in_g
+                    
+                    # get value to reduce
+                    diff = diff/len(supply_n)
+                    
+                    # reduce by calaulted value
+                    for nd in supply_n:
+                        K.node[nd]['demand'] -= diff
+                    
+                # if demand is greater than supply
+                elif demand_in_g < supply_in_g:
+                
+                    # network should fail
+                    # or should the demand be met by the supply node which will lead to failure anyway!
+                    print 'Demand cannot be met in subgraph: This subgraph should be removed.'
         
         graph += 1
-            
-           
+   
+    # get total supply and demand in network            
+    demand_in_g = 0
+    supply_in_g = 0
+    for nd in K.nodes():
+        # if a positive demand, node is a demand node
+        if K.node[nd]['demand'] > 0:
+            demand_in_g += K.node[nd]['demand']
+        # if a negative demand, node is a supply node
+        elif K.node[nd]['demand'] < 0:
+            supply_in_g += K.node[nd]['demand']
+    
+    # check supply and demand are in order
+    if demand_in_g + supply_in_g != 0:                
+        print 'dtotal is not zero:'
+        print 'demand in g:', demand_in_g
+        print 'supply in g:', supply_in_g
+        print 'Nodes in network:'
+        for nd in graphs[graph].nodes(data=True): print nd
+        exit()                    
+
     # if no subgraph has both supply and demand nodes (super or not)
     if terminate == True:
         K = None
-        #print 'Terminated as no subgraphs with both supply and demand nodes.'
-        return None
-           
-    
+        # terminated as no subgraphs with both supply and demand nodes
+        return None, demand_nodes
+     
     G = G.to_directed()
     
-    # check for supply or demand nodes are actually connected/can be readched
+    # check for supply or demand nodes are actually connected/can be reached
     # this is needed for directed network where though connected, a supply node 
     # may not be able to supply anything
     
-    
-    #    below needs developing further - need to resolve issue which
-    #    arises in network2 test case
-    #       sn 13 not connected to any demands but we still consider it
-    #           which means that half of the flows can be routed
-    #           and the other half cannot
-    #           this causes problems as these are not handled as yet
-    
     # check each supply node is connected to at least one demand node
     for s_nd in supply_nodes:
-        #print 'Checking connectivity of supply node:', s_nd
-        #get in degree of s nd. if 1 connected to super supply node. if 0, not.
-        s_nd_in_deg = K.in_degree(s_nd-1)
-        #print 'Degree:', s_nd_in_deg
-        supply_path = False
+        
         for d_nd in demand_nodes:
             # if supply node is connected to 
-            if s_nd_in_deg == 1:
-                try:  
-                    nx.shortest_path(K,s_nd-1,s_nd)
-                except:
-                    #no path into supply node therefore redundant
-                    supply_path == False
-                             
+            supply_path = nx.has_path(K,s_nd,dnd) 
+        
         if supply_path == False:
-            #print 'No path available - remove supply node',s_nd
+            print 'No path available - remove supply node',s_nd
             # set supply as zero as node now redundant and not connected
             K.node[s_nd]['original_demand'] = K.node[s_nd]['demand']
             K.node[s_nd]['demand'] = 0
-            
-    #print 'demand nodes:',demand_nodes
     
     for d_nd in demand_nodes:
         node_in = False
         for nd in K.nodes():
             if nd == d_nd: node_in = True
         # if demand node still in network
-        # if not should I not remove it from the list of demand nodes......
+        # if not should I not remove it from the list of demand nodes......YESSSSSS
         if node_in == True:
             demand_path = False
             for s_nd in supply_nodes:
@@ -1338,102 +1636,20 @@ def handle_subgraphs(K,supply_nodes,demand_nodes,super_supply_node,super_demand_
                 except:
                     pass
             if demand_path == False:
-                #print 'No path availble to demand node', d_nd
+                # no path availble to demand node
                 # set demand as zero as node now redundant and not connected
                 K.node[d_nd]['original_demand'] = K.node[d_nd]['demand']
                 K.node[d_nd]['demand'] = 0
     
+    '''
+    # run a final check to see what the supply and demand status is across the network
+    print 'vvvvvvvvvvvvvvvvvvvvvvvvvvvvvvv'
+    for nd in K.nodes():
+        if K.node[nd]['demand'] < 0:
+            print 'Node %s is a supply node with a demand value is %s' %(nd,K.node[nd]['demand'])
+        elif K.node[nd]['demand'] > 0:
+            print 'Node %s is a demand node with a demand value is %s' %(nd,K.node[nd]['demand'])
+    print 'vvvvvvvvvvvvvvvvvvvvvvvvvvvvvvv'    
+    '''
     
-    return K
-    
-    
-    
-def initial_tree_solution(G, demand = 'demand', capacity = 'capacity',
-                           weight = 'weight'):
-    """Find a initial tree solution rooted at r.
-
-    The initial tree solution is obtained by considering edges (r, v)
-    for all nodes v with non-negative demand and (v, r) for all nodes
-    with negative demand. If these edges do not exist, we add them to
-    the graph and call them artificial edges.
-    """
-    H = nx.DiGraph((edge for edge in G.edges(data=True) if
-                    edge[2].get(capacity, 1) > 0))
-    demand_nodes = (node for node in G.nodes_iter(data=True) if
-                    node[1].get(demand, 0) != 0)
-    H.add_nodes_from(demand_nodes)
-    r = H.nodes()[0]
-    #r = H.node(24)
-    T = nx.DiGraph()
-    y = {r: 0}
-    artificialEdges = []
-    flowCost = 0
-
-    n = H.number_of_nodes()
-    try:
-        maxWeight = max(abs(d[weight]) for u, v, d in H.edges(data = True)
-                        if weight in d)
-    except ValueError:
-        maxWeight = 0
-    hugeWeight = 1 + n * maxWeight
-
-    for v, d in H.nodes(data = True)[1:]:
-        vDemand = d.get(demand, 0)
-        if vDemand >= 0:
-            if not (r, v) in H.edges():
-                H.add_edge(r, v, {weight: hugeWeight, 'flow': vDemand})
-                artificialEdges.append((r, v))
-                y[v] = H[r][v].get(weight, 0)
-                T.add_edge(r, v)
-                flowCost += vDemand * H[r][v].get(weight, 0)
-
-            else: # (r, v) in H.edges()
-                if (not capacity in H[r][v]
-                    or vDemand <= H[r][v][capacity]):
-                    H[r][v]['flow'] = vDemand
-                    y[v] = H[r][v].get(weight, 0)
-                    T.add_edge(r, v)
-                    flowCost += vDemand * H[r][v].get(weight, 0)
-
-                else: # existing edge does not have enough capacity
-                    newLabel = generate_unique_node()
-                    H.add_edge(r, newLabel, {weight: hugeWeight, 'flow': vDemand})
-                    H.add_edge(newLabel, v, {weight: hugeWeight, 'flow': vDemand})
-                    artificialEdges.append((r, newLabel))
-                    artificialEdges.append((newLabel, v))
-                    y[v] = 2 * hugeWeight
-                    y[newLabel] = hugeWeight
-                    T.add_edge(r, newLabel)
-                    T.add_edge(newLabel, v)
-                    flowCost += 2 * vDemand * hugeWeight
-
-        else: # vDemand < 0
-            if not (v, r) in H.edges():
-                H.add_edge(v, r, {weight: hugeWeight, 'flow': -vDemand})
-                artificialEdges.append((v, r))
-                y[v] = -H[v][r].get(weight, 0)
-                T.add_edge(v, r)
-                flowCost += -vDemand * H[v][r].get(weight, 0)
-
-            else:
-                if (not capacity in H[v][r]
-                    or -vDemand <= H[v][r][capacity]):
-                    H[v][r]['flow'] = -vDemand
-                    y[v] = -H[v][r].get(weight, 0)
-                    T.add_edge(v, r)
-                    flowCost += -vDemand * H[v][r].get(weight, 0)
-                else: # existing edge does not have enough capacity
-                    newLabel = generate_unique_node()
-                    H.add_edge(v, newLabel,
-                               {weight: hugeWeight, 'flow': -vDemand})
-                    H.add_edge(newLabel, r,
-                               {weight: hugeWeight, 'flow': -vDemand})
-                    artificialEdges.append((v, newLabel))
-                    artificialEdges.append((newLabel, r))
-                    y[v] = -2 * hugeWeight
-                    y[newLabel] = -hugeWeight
-                    T.add_edge(v, newLabel)
-                    T.add_edge(newLabel, r)
-                    flowCost += 2 * -vDemand * hugeWeight
-            
-    return H, T, y, artificialEdges, flowCost, r    
+    return K, demand_nodes
