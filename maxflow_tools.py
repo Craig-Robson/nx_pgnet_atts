@@ -156,7 +156,7 @@ class topological_changes:
         Finds all nodes with a role set as demand or supply. Creates a super node 
         where required adn returns a warning if there are no nodes with either role.
         '''
-    
+        
         supply_nodes, demand_nodes = get(self.G).get_demand_supply_nodes()
         added_edges = {'supply':[],'demand':[]}  
         added_nodes = {'supply':[],'demand':[]}
@@ -178,13 +178,14 @@ class topological_changes:
         
         return self.G,supply_nodes, demand_nodes, added_nodes, added_edges     
     
-    def convert_topo(self,demand,supply,transfer,flow_capacity):
+    def convert_topo(self,demand = 'demand',supply = 'supply',transfer = 'intermediate',flow_capacity = 'flow_capacity'):
         '''
         Converts a network to a format where node capacities can be used in 
         standard flow algorithms. Replaces a node with two nodes, each with a 
         suffix, either A(inflow) or B (outflow), and adds a connecting edge which
         has the attributs of the replaced node. Edges affected are reconnected to 
         the repsective new node. This can be reverted using the revert_topo function.
+        'demand','supply','intermediate','flow_capacity'
         '''
         
         G = self.G
@@ -310,10 +311,10 @@ class topological_changes:
         for nd in node_list:
             #remove node
             G.remove_node(nd)
-        
+        #return G, demand_nodes, supply_nodes, super_demand_node, super_supply_node
         return G, supply_nodes, demand_nodes, super_supply_node, super_demand_node
         
-    def revert_topo(self,demand,supply,transfer,flow):
+    def revert_topo(self,demand = 'demand', supply = 'supply', transfer = 'intermediate', flow = 'flow'):
         '''
         Allows a network which has been converted to handle node capacities to be 
         converted back to a standard topological network. Copies attributes across
@@ -360,6 +361,31 @@ class topological_changes:
             G.remove_node(nd)
             
         return G
+        
+    def get_trigger_edge(self,edge):
+        '''
+        Searches the edges of the network to identify the new start and end 
+        nodes of the formally decalred trigger edge.
+        '''
+        start_nd, end_nd = edge        
+        
+        new_start_nd = False
+        new_end_nd = False
+        
+        for node in self.G.nodes():
+            #print self.G.node[node]['ref_node']
+            if self.G.node[node]['ref_node'] == start_nd and new_start_nd == False :
+                new_start_nd = node + 1 #need to add one here so it uses the supply node rather than the demand
+            elif self.G.node[node]['ref_node'] == end_nd and new_end_nd == False:
+                new_end_nd = node
+        
+        if new_start_nd != False and new_end_nd != False:
+            edge = new_start_nd, new_end_nd
+        else:
+            print 'Could not find new edge.'
+        
+        return edge        
+
 
 class flow:
     '''
@@ -782,6 +808,17 @@ class flow:
                     # zero. This should probably actually be a failure.
                     #print 'Demand node not reachable. It should be removed.'
                     #reduce supply by the demand being removed
+                    #print solution["demand_node"]
+                    #print super_supply_node
+                    
+                    # super_supply_node can be False for some reason here. Need to investigate this further
+                    if super_supply_node == False:
+                        for node in G.nodes(data = True):
+                            if node[1]['role_type'] == 'supply':
+                                #print node[1]
+                                super_supply_node = node[0]
+                        print super_supply_node
+                        
                     G.node[super_supply_node]['demand'] -= G.node[solution["demand_node"]]['demand']*-1
                     #set demand as zero
                     G.node[solution["demand_node"]]['demand'] = 0
@@ -919,8 +956,9 @@ class flow:
         # check all demands have been met                       
         for node in unmet_demand:
             if node['unmet'] != int(0):
-                print 'For some reason there are still inmet demands. This should not be the case.'
-                print 'Final Un-met demand:', unmet_demand 
+                print 'Error code: 1999'
+                #print 'For some reason there are still unmet demands. This should not be the case.'
+                #print 'Final Un-met demand:', unmet_demand 
                 exit()
                 
         return G, demand_supplied, supply_used
@@ -1020,7 +1058,8 @@ class flow:
         H, T, y, artificialEdges, flowCost, r = mincost._initial_tree_solution(G, demand = demand, capacity = capacity,
                                        weight = weight)
         if r != None: 
-            print ' r is none'
+            #print ' r is none'
+            pass
         ##print 'H:'#,H.edges() #this is the network/tree
         ##print 'T:',T.edges() #tree solution
         ##print 'y:',y #node flow costs
@@ -1155,7 +1194,7 @@ class flow:
         if print_test_outputs == True:
             print 'demand supplied:', demand_supplied
             print 'supply used:', supply_used
-    
+        
         return G, flowCost, flowDict, over_edges, demand_supplied, supply_used
 
 class get:
@@ -1173,15 +1212,16 @@ class get:
         '''
         Return all nodes which are supply nodes and those which are demand nodes.
         '''
-
+        
         supply_nodes = []
         demand_nodes = []
+        
         for nd in self.G.nodes():
             if self.G.node[nd]['role'] == 'supply':
                 supply_nodes.append(nd)
             elif self.G.node[nd]['role'] == 'demand':
                 demand_nodes.append(nd)
-    
+        
         return supply_nodes,demand_nodes
 
 
@@ -1189,7 +1229,7 @@ class get:
         '''
         Identify the node keys for the source and demand nodes in the network.
         '''
-        if len(demand_nodes)>1:
+        if len(demand_nodes) > 1:
             demand_nd = added_nodes['demand'][0]
         elif len(demand_nodes) == 1 :
             demand_nd = demand_nodes[0]
@@ -1311,15 +1351,15 @@ class get:
                 #if edge flow is equal to the previous maximum
                 elif edge_flows[eg] == edge_flow_max['flow']:
                     edge_flow_max['edge'].append(eg)
-        
+       
         # if more than one edge with max value pick one at random
         if len(edge_flow_max['edge']) > 1:
             import random
             edge_flow_max['edge'] = edge_flow_max['edge'][random.randint(0,len(edge_flow_max['edge'])-1)]
         #if only one edge with max value select it
         else:
-            edge_flow_max = edge_flow_max['edge'][0]
-            
+            edge_flow_max['edge'] = edge_flow_max['edge'][0]
+        
         return node_flow_max, edge_flow_max
 
 
@@ -1367,9 +1407,15 @@ class get:
         also calcualted and assigned.
         '''
         
+        #print self.G.nodes()
+        #print self.G.edges()
+        d_nd, s_nd = get(self.G).get_demand_supply_nodes()
+        #print d_nd
+        #print s_nd        
+        
         if use_node_capacities == True:
-            self.G = topological_changes(self.G).convert_topo()
-            
+            self.G, supply_nodes, demand_nodes, super_supply_node, super_demand_node = topological_changes(self.G).convert_topo()
+        
         #check for supply and demand nodes. Needs to be at least one of each.
         #if more than one need to create a super source/sink(demand) nodes.
         self.G,supply_nodes, demand_nodes, added_nodes, added_edges = topological_changes(self.G).check_for_demand_supply_nodes()
@@ -1400,7 +1446,7 @@ class get:
         #before running any analysis, need to remove the added nodes and edges - the super source/demand if used
         self.G = topological_changes(self.G).remove_added_nodes_edges(added_edges,added_nodes)
         
-        node_flow_max, edge_flow_max = self.get_max_flows()
+        node_flow_max, edge_flow_max = self.get_max_flows(super_supply_node,super_demand_node,supply_nodes,demand_nodes,added_nodes)
         
         return self.G, {'max_flow':max_flow,'max_node_flow':node_flow_max,'max_edge_flow':edge_flow_max}
     
@@ -1675,3 +1721,13 @@ class other:
             print 'Need to track %s missing flow(s)' %(demand-supply)
            
         return self.G
+    
+    def simulation_completed(self,text,graph_edges_removed,print_edges,print_nodes):
+        '''
+        '''        
+        print 'Reason for termination:', text
+        print 'Edges removed:', graph_edges_removed
+        if print_edges == True:
+            print self.G.edges()
+        if print_nodes == True:
+            print self.G.nodes()       

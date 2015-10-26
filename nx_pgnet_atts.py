@@ -77,7 +77,11 @@ class table_sql:
         for row in self.conn.ExecuteSQL(sql):   
     		
               result = row.np_create_node_attribute_table
-    		
+        
+        # this adds a foreign key for the NodeID which is not added using the db function
+        sql = ''' ALTER TABLE "%s" ADD CONSTRAINT %s FOREIGN KEY ("NodeID") REFERENCES "%s" ("NodeID")''' %(self.prefix+"_Nodes_"+attribute, self.prefix+"_Nodes_"+attribute+"_NodeID_FrKy",self.prefix+"_Nodes")
+        self.conn.ExecuteSQL(sql)
+        
         return result
     
     def create_edge_attribute_table(self, attribute):
@@ -90,7 +94,11 @@ class table_sql:
         for row in self.conn.ExecuteSQL(sql):   
     		
               result = row.np_create_edge_attribute_table
-    		
+      
+        # adds a foreign key to the edges - this is not in the database function
+        sql = ''' ALTER TABLE "%s" ADD CONSTRAINT %s FOREIGN KEY ("EdgeID") REFERENCES "%s" ("EdgeID")''' %(self.prefix+"_Edges_"+attribute, self.prefix+"_Edges_"+attribute+"_EdgesID_FrKy",self.prefix+"_Edges")
+        self.conn.ExecuteSQL(sql)
+      
         return result
       
       
@@ -156,6 +164,7 @@ class table_sql:
         This is used as there is an as yet unidentified issue with the above 
         method (update_node_attributes).
         '''
+        
         if type(att_value) != tuple:
             if attribute == 'buffer':
                 sql = '''
@@ -194,6 +203,8 @@ class table_sql:
                       WHERE "NodeID" = %s
                       ''' %(self.prefix+"_Nodes_"+attribute,functionid,attribute,att_value[0],'flow_capacity',att_value[1],unitid,nodeid)
                 result = self.conn.ExecuteSQL(sql)
+                
+        
         return result
 
     def update_edge_attributes(self,attribute,att_value,functionid,unitid,edgeid,overwrite):
@@ -353,8 +364,10 @@ class table_sql:
         '''
         Returns a list of data with each entry being the attributes for a edge.
         '''        
-
-        sql = 'SELECT edge_table.*, snf.%s, snf.function, snf."UnitID" FROM "%s" AS edge_table JOIN (SELECT * FROM "%s" AS function_table JOIN "%s" snf ON function_table."FunctionID" = snf."FunctionID") AS snf ON edge_table."EdgeID" = snf."EdgeID"'%(key,edge_table,function_table,att_table)
+        if key == 'flow':
+            sql = 'SELECT edge_table.*, snf.%s, snf.flow_capacity, snf.function, snf."UnitID" FROM "%s" AS edge_table JOIN (SELECT * FROM "%s" AS function_table JOIN "%s" snf ON function_table."FunctionID" = snf."FunctionID") AS snf ON edge_table."EdgeID" = snf."EdgeID"'%(key,edge_table,function_table,att_table)
+        else:
+            sql = 'SELECT edge_table.*, snf.%s, snf.function, snf."UnitID" FROM "%s" AS edge_table JOIN (SELECT * FROM "%s" AS function_table JOIN "%s" snf ON function_table."FunctionID" = snf."FunctionID") AS snf ON edge_table."EdgeID" = snf."EdgeID"'%(key,edge_table,function_table,att_table)
         result = self.conn.ExecuteSQL(sql)
         
         return result
@@ -489,37 +502,47 @@ class write:
         then facilitates the building of the extra tables for the node and egde 
         attributes and relevant functions.
         '''
-        try:
-            print 'before contains atts code:',G.node[1].keys()
-        except:
-            pass
+
+        if overwrite == True:
+            # delete attribute tables
+            for att in attributes[0]: #loops through node attributes
+                try:
+                    sql = '''DROP TABLE "%s" ''' %(self.prefix+"_Nodes_"+att)
+                    self.conn.ExecuteSQL(sql)
+                except:
+                    # table didn't exist
+                    pass
+                
+            for att in attributes[1]: #loops through edge attributes
+                try:
+                    sql = '''DROP TABLE "%s" ''' %(self.prefix+"_Edges_"+att)
+                    self.conn.ExecuteSQL(sql)
+                except:
+                    # table didn't exist
+                    pass
+            
         #check here for attribute headings being in network
         if contains_atts == False:
             #if att columns exist in the network rename columns (appends'_1')
             for key in attributes[0].keys():
                 if attributes[0][key] == True: 
-                    print "Renaming column.",key
                     table_sql(self.conn,self.prefix).rename_node_column(key)                    
             for key in attributes[1].keys():
                 if attributes[1][key] == True: 
-                    print "Renaming column.",key
                     table_sql(self.conn,self.prefix).rename_edge_column(key) 
         
         Gwrite = G.copy()
-        #write network to database -this is where it goes wrong. It writes out 
-        #to the database all atts into the nodes table, but as the connection
-        #is not refreshed, returns on read those values which were in the node 
-        #table beforehand. Same applies to edges.
-        nx_pgnet.write(self.conn).pgnet(Gwrite, self.prefix, srid, overwrite, directed, multigraph)
-        print G.nodes()
-        print G.edges()
-        exit()
-        print 'issue is that nodes are being reassigned an id which is different and the edges are not being given this id, thus creating a different network.'
-        for nd in G.nodes():
-            print G.node[nd]['id']
-            for eg in G.edges():
-                print G.edge[eg[0]][eg[1]]
-        exit()
+      
+        #write network to database -this is where it goes wrong. It writes out to the database all atts into the nodes table, but as the connection is not refreshed, returns on read those values which were in the node table beforehand. Same applies to edges.
+        if srid == -1:
+            index = 0
+            for node in G.nodes():	
+                G.node[node]['id_'] = index 
+                index += 1 
+            nx_pgnet.write(self.conn).pgnet(Gwrite, self.prefix, srid, overwrite, directed, multigraph, node_equality_key='id_')
+        else:
+            nx_pgnet.write(self.conn).pgnet(Gwrite, self.prefix, srid, overwrite, directed, multigraph)
+        
         Gwrite = None
         #pull back so we have edge id's which are easier to work with
         #G = nx_pgnet.read(self.conn).pgnet(self.prefix) #this is causing issues with attributes - not 100% why
@@ -536,8 +559,7 @@ class write:
             table_sql(self.conn,self.prefix).create_function_table()
             
             #create attribute tables for nodes
-            for key in attributes[0].keys():
-                
+            for key in attributes[0].keys():                
                 #if attribute is set as True
                 if attributes[0][key] == True:
                     #create attribute table with all nodes within
@@ -616,9 +638,9 @@ class write:
                     #needs to also write functions to table, first checking if 
                     #it is already there. If get functionid, if not add.
                     if attributes[0][key] == True:
-                        
-                        for nd in G.nodes():
                             
+                        for nd in G.nodes():
+                    
                             #get the attribute value
                             if key == 'buffer': att_value = G.node[nd]['storage'],G.node[nd]['buffer_capacity']
                             elif key == 'flow': att_value = G.node[nd]['flow'],G.node[nd]['flow_capacity']
@@ -681,6 +703,7 @@ class write:
                                 #update attribute table with att value and function id
                                 if att_value != False and function != False and functionid != '':
                                     #result = table_sql(self.conn,self.prefix).update_node_attributes(key,att_value,functionid,nd,overwrite=False)
+                                    
                                     result = table_sql(self.conn,self.prefix).update_node_attributes2(key,att_value,functionid,unit_id,nd,overwrite=False)
                                     if result == False:
                                         raise error_classes.DatabaseError("Could not update node attributes for node %s." %(nd))
@@ -771,6 +794,7 @@ class write:
                 
     def populate_roles(self, G):
         '''
+        Populates the role attribute table for a network using the roles already in the network.
         '''
         role_att=False; roles=[]
         #check node table if role column exists
@@ -864,7 +888,7 @@ class write:
     def add_atts_randomly(self,G,attribute,nodes,edges,att_value_range,functionid_range,units,overwrite):
         '''
         Adds attributes to nodes and edges given an attribute name, a range for
-        random values, function ids and a unit string.
+        random values, function ids and a unit string. Functions must have already been added to the function table.
         '''
         if nodes == True:
             #loop through all the nodes
@@ -922,6 +946,81 @@ class write:
                     else:
                         raise error_classes.GeneralError('Unknown error! Function with an id of %s exists in %s_Functions table but could not be written in the edge table.' %(functionid,self.prefix))
     
+    def assign_roles_randomly(self,no_of_supply, no_of_demand, names = ['supply','demand','transfer']):
+        '''
+        Assigns roles randomly to a network. Then addes the roles to the role table.
+        Inputs:
+            number of supply nodes
+            number of demand nodes
+            role names - [supply, demand, transfer]
+        '''
+        
+        # check if a role column exists in the node table
+        sql = ''' SELECT *
+                FROM "%s_Nodes"
+            ''' %(self.prefix)
+        result = self.conn.ExecuteSQL(sql)        
+        
+        # get a list of node ids as well while here to make adding roles later easier
+        node_ids = []
+        role_col = False
+        for row in result:
+            # check for a role column
+            for ky in row.keys():
+                if ky == 'role':
+                    role_col = True
+            node_ids.append(row["NodeID"])
+        
+        # if not add column to table
+        if role_col == False:
+            sql = '''
+                ALTER TABLE "%s_Nodes"
+                ADD role character varying(20)
+                ''' %(self.prefix)
+            self.conn.ExecuteSQL(sql)
+        
+        # populate Node table
+        print node_ids
+        sql = '''
+            UPDATE "%s_Nodes"
+            SET role = '%s'
+            ''' %(self.prefix,names[2])
+        self.conn.ExecuteSQL(sql)
+        
+        # get supply and demand nodes
+        supply_nodes = []
+        demand_nodes= []
+        while len(supply_nodes) < no_of_supply:
+            num = random.randint(0,len(node_ids)-1)
+            supply_nodes.append(node_ids[num])
+            node_ids.pop(num)
+            
+        while len(demand_nodes) < no_of_demand:
+            num = random.randint(0,len(node_ids)-1)
+            demand_nodes.append(node_ids[num])
+            node_ids.pop(num)
+        
+        # change role in table for supply and demand nodes
+        for supp_node in supply_nodes:
+            print 'assigned a supply node'
+            sql = '''
+                UPDATE "%s_Nodes"
+                SET role = '%s'
+                WHERE "NodeID" = %s;
+                ''' %(self.prefix,names[0],supp_node)
+            self.conn.ExecuteSQL(sql)
+        for dem_node in demand_nodes:
+            print 'assigned a demand node'
+            sql = '''
+                UPDATE "%s_Nodes"
+                SET role = '%s'
+                WHERE "NodeID" = %s;
+                ''' %(self.prefix,names[1],dem_node)
+            self.conn.ExecuteSQL(sql) 
+            
+        
+        return True        
+        
         
 class read:
     def __init__(self, db_conn, name):
@@ -964,8 +1063,19 @@ class read:
         #loop through nodes adding role_type att use role_dt dict and roleid att        
         if roleid == True:
             for node in G.nodes():
-                G.node[node]['role_type'] = role_dt[str(G.node[node]['role_id'])]
-        
+                #print role_dt
+                #print G.node[node]
+                #print G.node[node]['role_id']
+                #print G.node[node]['role_type']
+                try:
+                    G.node[node]['role_type'] = role_dt[str(G.node[node]['role_id'])]
+                except: 
+                    try:
+                        G.node[node]['role_type'] = role_dt[str(G.node[node][1]['role_id'])]
+                    except: 
+                        print 'Failed adding role type attribute.'
+                        exit()
+                        
         if attributes != None:
             #check units table and return a dict of units in it
             unit_dt = table_sql(self.conn,self.prefix).get_units_dict()
@@ -983,7 +1093,7 @@ class read:
                         raise error_classes.DatabaseError("Table for the '%s' edge attribute does not exist. Cancelling network build request." %(key))
     
             #need to use attributes to get the required data from the database and
-            #adds attributes ang thier functions to G
+            #adds attributes and thier functions to G
             function_table = self.prefix + "_Functions"
             #nodes
             for key in attributes[0].keys():
@@ -998,25 +1108,36 @@ class read:
                         if key == 'buffer':
                             G.node[row["NodeID"]]['storage'] = row['storage']
                             G.node[row["NodeID"]]['buffer_capacity'] = row['buffer_capacity']
+                        elif key == 'flow':
+                            G.node[row["NodeID"]]['flow'] = row['flow']
+                            G.node[row["NodeID"]]['flow_capacity'] = row['flow_capacity']
                         else:
                             G.node[row["NodeID"]][key] = row[key]
+                            
                         G.node[row["NodeID"]][key + "_function"] = row["function"]
                         G.node[row["NodeID"]][key + "_unit"] = unit_dt[str(row["UnitID"])]
                         
             #edges
             for key in attributes[1].keys():
+                
                 if attributes[1][key] == True:
                     #get data for attribute
                     edge_table = self.prefix + "_Edges"
                     att_table = self.prefix + "_Edges_" + key
+                    
                     result = table_sql(self.conn,self.prefix).get_edge_data(key,edge_table,function_table,att_table)
                     
                     for row in result:
+                        
                         #using the node pk add to the attributes of the nodes
                         #add to the networkx instance
-                        G.edge[row["Node_F_ID"]][row["Node_T_ID"]][key]=row[key]
-                        G.edge[row["Node_F_ID"]][row["Node_T_ID"]][key+"_function"]=row["function"]
-                        G.edge[row["Node_F_ID"]][row["Node_T_ID"]][key+"_unit"] = unit_dt[str(row["UnitID"])]
+                        if key == 'flow':
+                            G.edge[row["Node_F_ID"]][row["Node_T_ID"]][key]=row[key]
+                            G.edge[row["Node_F_ID"]][row["Node_T_ID"]]['flow_capacity'] = row['flow_capacity']
+                        else:
+                            G.edge[row["Node_F_ID"]][row["Node_T_ID"]][key]=row[key]
+                            G.edge[row["Node_F_ID"]][row["Node_T_ID"]][key+"_function"]=row["function"]
+                            G.edge[row["Node_F_ID"]][row["Node_T_ID"]][key+"_unit"] = unit_dt[str(row["UnitID"])]
         return G
 
     def return_network_functions(self,):
