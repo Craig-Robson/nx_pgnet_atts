@@ -209,15 +209,14 @@ def func_trigger_edge(G,trigger_edge,trigger_edges,super_supply_node,super_deman
         node_flow_max, edge_flow_max = maxflow_tools.get(G).get_max_flows(super_supply_node,super_demand_node,supply_nodes,demand_nodes,added_nodes)
         trigger_edges.append(edge_flow_max)
         print '#### Removed edge with greatest flow:', edge_flow_max
-        print '#### Removed edge with greatest flow:', G[edge_flow_max['edge'][0]][edge_flow_max['edge'][1]]['flow_capacity']
+        
         try:
             G.remove_edge(edge_flow_max['edge'][0],edge_flow_max['edge'][1])
             results_file.write('\nEdge removed as trigger: %s' %(edge_flow_max))
         except: 
             print 'Could not remove selected edge, %s' %(edge_flow_max)
             exit()
-            
-       
+                   
         trigger_edge = ([edge_flow_max['edge']])
     else:
         
@@ -366,14 +365,8 @@ def flow_fail_sim(G,demand_value,capacity_factor,default_capacity,trigger_edge,g
     step_count = 1
     trigger_step = 1
     graph_nodes_removed.append([])
-
-    for edge in G.edges():
-        if int(G[edge[0]][edge[1]]['flow_capacity']) != 4:
-            print 'some edges have wrong capacity'
-            break
-            #print G[edge[0]][edge[1]]['flow_capacity']    
     
-    while terminate == False and step_count < 100:
+    while terminate == False and step_count < 100 and trigger_step < 100:
         print '-------------------------------------'
         print 'Trigger step:', trigger_step
         print 'Step:', step_count
@@ -381,74 +374,45 @@ def flow_fail_sim(G,demand_value,capacity_factor,default_capacity,trigger_edge,g
         
         try:
             if print_test_outputs == True: print '### Calculate flows'
-            '''
-            # reset flows to zero
-            G = maxflow_tools.other(G).reset_flow_values()
-            # find flows over network
-            G, cost,edge_flows,over_edges,demand_supplied,supply_used = maxflow_tools.flow(G).network_simplex(demand_nodes, supply_nodes, super_supply_node, demand = 'demand',capacity = 'flow_capacity',weight='weight')
-            
-            # here we can record the degree to which the demands can be met within the limits of the network i.e. how much spare capacity?
-            
-            
-            # uses a shortest path to assign flows to network where supply and demand values are not met
-            print '### Calculated flows over network'  
-                    
-            demand_supplied_2,b = maxflow_tools.get(G).get_demand_supplied_supply_used()
-            for node in demand_supplied_2:
-                if checking_flow_demand == True:
-                    if node['demand'] < node['flow']:
-                        raise error_classes.DemandError(G,'Demand has not been met. This should be done in all cases.',fail_print_nodes,fail_print_edges)
-            
-            # take the over edges from network simplex and add flows to network
-            # now just uses the demand not delivered to identify routes with the supply capacity
-            G, demand_supplied, supply_used = maxflow_tools.flow(G).resolve_edge_flows(over_edges,demand_nodes, supply_nodes, super_supply_node,demand_supplied,supply_used)
-            '''
+           
             G, cost,edge_flows,over_edges,demand_supplied,supply_used = func_calculate_edge_flows(G,demand_nodes, supply_nodes, super_supply_node,checking_flow_demand,fail_print_nodes,fail_print_edges)
             
             if print_test_outputs == True: print '### Resolved edge flows - (demand supplied: %s, supply_used: %s)' %(demand_supplied, supply_used)
-                
+            
+            #not 100% sure what this does
             G = maxflow_tools.other(G).track_flows(super_supply_node, supply_nodes, demand_nodes)                
             
             # check after the routing of flows that all demands are met
             G, terminate = func_check_demands_met(G,fail_print_nodes,fail_print_edges,terminate)
             if terminate == True: break
-            '''
-            if G != None:
-                a,b = maxflow_tools.get(G).get_demand_supplied_supply_used()
-                for node in a:
-                    if node['flow'] != node['demand']:
-                        raise error_classes.DemandError(G, 'Demand has not been met. This should be done in all cases.',fail_print_nodes,fail_print_edges)
-                if trigger_until_cascading == False:
-                    if terminate == True:
-                        break
-            else:
-                if trigger_until_cascading == False:
-                    terminate == True
-                    print 'Fatal Error!'
-                    break
-            '''
+          
             print '### Checking for edges over capacity'
             # check for edges over capacity
             edges_over, nodes_over = maxflow_tools.other(G).check_over_capacity(super_supply_node,super_demand_node,supply_nodes,demand_nodes)
-            print 'Edges over:', edges_over
-            print 'trigger until cascading:', trigger_until_cascading
-            #this is optional at the moment until sure this is needed
+     
+            # this is optional at the moment until sure this is needed - need to check what this is doing
             if find_alt_routes == True:
                 G = maxflow_tools.find_alternative_route(G)
 
+            # if there is an edge over capacity, no longer need any trigger edges removed
             if len(edges_over) > 0:
                 trigger_until_cascading = False
             else:
+                # identify and remove the next trigger edge
                 G, trigger_edges, trigger_edge = func_trigger_edge(G,trigger_edge,trigger_edges,super_supply_node,super_demand_node,supply_nodes,demand_nodes,added_nodes,results_file)
                 trigger_edge = []
+                # iterate the trigger step
                 trigger_step += 1
+                # take one of step count - one added again at end
+                step_count -= 1
             
+            # remove any nodes over capacity if set to do so
             if remove_nodes_over == True and len(nodes_over) > 0:
-                print '### Remove nodes over capacity'            ParkRun Replacement - icy
+                print '### Remove nodes over capacity'
                 for u in nodes_over:
                     print 'Removed node: %s' %u
                     G.remove_node(u)
-
+            # remove any edges over capacity if set to do so
             if remove_edges_over == True and len(edges_over) > 0:
                 print '### Remove edges over capacity'
                 # remove edges which are over capacity
@@ -469,6 +433,7 @@ def flow_fail_sim(G,demand_value,capacity_factor,default_capacity,trigger_edge,g
             # need to remove subgraphs which cannot be computed
             G,demand_nodes =  maxflow_tools.flow(G).handle_subgraphs(supply_nodes,demand_nodes,super_supply_node,super_demand_node)
             
+            
             if G == None:
                 # no subgraph has both a supply and demand node so run terminated
                 text = 'No graphs with both supply and demand nodes left'
@@ -476,9 +441,9 @@ def flow_fail_sim(G,demand_value,capacity_factor,default_capacity,trigger_edge,g
                 write_result_file_simulation_end(results_file, trigger_edges, graph_edges_removed, graph_nodes_removed)                
             
             if print_test_outputs == True: print '### Check supply still left in network'        
+            
             # if the supply value now at zero, stop simulation
             demand_sum = sum(d['demand'] for v, d in G.nodes(data = True))
-
             if demand_sum != 0:
                 raise error_classes.DemandError(G,'Demand across network does not equal zero as it should.',fail_print_nodes,fail_print_edges)
             
@@ -509,6 +474,7 @@ def flow_fail_sim(G,demand_value,capacity_factor,default_capacity,trigger_edge,g
             text = 'Network has reached an equilibrium'
             terminate = maxflow_tools.other(G).simulation_completed(text,graph_edges_removed,print_edges,print_nodes)
             write_result_file_simulation_end(results_file,text,trigger_edges,graph_edges_removed,graph_nodes_removed)
+
         #iterate the step counter based on what has happend thus far
         step_count += 1
     
